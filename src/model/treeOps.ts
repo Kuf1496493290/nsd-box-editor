@@ -1,3 +1,4 @@
+// FILE: src/model/treeOps.ts
 import type { BoolLabelMode, LoopKind, NsdNode, SelectionTarget, SequenceNode } from '../app/types'
 import {
     createCaseNode,
@@ -972,6 +973,30 @@ export function updateCaseConditionTextInRoot(root: SequenceNode, nodeId: string
         selectedNodeId: nodeId,
     }
 }
+
+export function updateLoopConditionTextInRoot(root: SequenceNode, nodeId: string, conditionText: string): UpdateResult {
+    let changed = false
+    const nextText = normalizeText(conditionText)
+
+    const nextRoot = mapSequence(root, (node) => {
+        if (node.type !== 'loop') return node
+        if (node.id !== nodeId) return node
+        if (node.conditionText === nextText) return node
+
+        changed = true
+        return {
+            ...node,
+            conditionText: nextText,
+        }
+    })
+
+    return {
+        root: nextRoot,
+        changed,
+        selectedNodeId: nodeId,
+    }
+}
+
 
 export function updateCaseBranchLabelInRoot(
     root: SequenceNode,

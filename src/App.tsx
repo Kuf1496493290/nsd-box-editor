@@ -1,3 +1,4 @@
+// FILE: src/App.tsx
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CasePartKey, IfPartKey, NsdNode, SelectionTarget, SequenceNode } from './app/types'
 import { useAppState } from './app/state'
@@ -8,7 +9,7 @@ import { FloatingTextEditor } from './components/FloatingTextEditor'
 import { downloadPng, downloadSvg } from './utils/download'
 import { installKeyboardShortcuts } from './features/keyboard'
 
-type EditingKind = 'process' | 'ifCondition' | 'caseCondition' | 'caseBranchLabel'
+type EditingKind = 'process' | 'ifCondition' | 'caseCondition' | 'loopCondition' | 'caseBranchLabel'
 
 function pushSequenceChildren(stack: NsdNode[], node: Extract<NsdNode, { type: 'sequence' }>) {
     for (let i = node.children.length - 1; i >= 0; i -= 1) {
@@ -136,6 +137,7 @@ export default function App() {
         updateProcessText,
         updateIfConditionText,
         updateCaseConditionText,
+        updateLoopConditionText,
         updateCaseBranchLabel,
         updateIfBoolLabelMode,
 
@@ -186,6 +188,11 @@ export default function App() {
             return
         }
 
+        if (kind === 'loopCondition') {
+            setEditorTitle('编辑 LOOP 条件')
+            return
+        }
+
         setEditorTitle('编辑 CASE 条件')
     }, [])
 
@@ -208,9 +215,6 @@ export default function App() {
     }
 
     const onInitialize = useCallback(() => {
-        const ok = globalThis.confirm('确定要初始化吗？这将清除当前图中的所有内容，并恢复到默认第一步。')
-        if (!ok) return
-
         closeEditor()
         reset()
     }, [closeEditor, reset])
@@ -243,6 +247,18 @@ export default function App() {
         openEditor(nodeId, 'ifCondition', node.conditionText)
     }
 
+
+
+    function onIfLabelDoubleClick(nodeId: string, part: 'trueLabel' | 'falseLabel') {
+        selectTarget({ kind: 'ifPart', nodeId, part })
+        closeEditor()
+
+        const node = findNodeById(state.root, nodeId)
+        if (node?.type !== 'if') return
+
+        const nextMode = node.boolLabelMode === 'TF' ? 'YN' : 'TF'
+        updateIfBoolLabelMode(nodeId, nextMode)
+    }
     function onIfPartSelect(nodeId: string, part: IfPartKey) {
         selectTarget({ kind: 'ifPart', nodeId, part })
         closeEditor()
@@ -303,6 +319,16 @@ export default function App() {
         closeEditor()
     }
 
+
+
+    function onLoopConditionDoubleClick(nodeId: string) {
+        selectNode(nodeId)
+
+        const node = findNodeById(state.root, nodeId)
+        if (node?.type !== 'loop') return
+
+        openEditor(nodeId, 'loopCondition', node.conditionText)
+    }
     function onEditorConfirm(nextText: string) {
         if (!editingNodeId) return
 
@@ -320,6 +346,12 @@ export default function App() {
 
         if (editingKind === 'caseCondition') {
             updateCaseConditionText(editingNodeId, nextText)
+            closeEditor()
+            return
+        }
+
+        if (editingKind === 'loopCondition') {
+            updateLoopConditionText(editingNodeId, nextText)
             closeEditor()
             return
         }
@@ -377,9 +409,7 @@ export default function App() {
                 return
             }
 
-            const ok = globalThis.confirm('CASE 分支最少保留 2 个。继续删除将级联删除整个 CASE（含条件与全部分支），是否继续？')
-            if (!ok) return
-
+            // 分支数 <= 2：删除分支会级联删除整个 CASE（无需提示，可撤销）
             closeEditor()
             deleteProcess(node.id)
         },
@@ -388,37 +418,9 @@ export default function App() {
 
     const deleteSelectedNode = useCallback(
         (node: NsdNode) => {
-            if (node.type === 'if') {
-                const ok = globalThis.confirm('将删除整个 IF（含条件与两个分支），是否继续？')
-                if (!ok) return
-
-                closeEditor()
-                deleteProcess(node.id)
-                return
-            }
-
-            if (node.type === 'case') {
-                const ok = globalThis.confirm('将删除整个 CASE（含条件与全部分支），是否继续？')
-                if (!ok) return
-
-                closeEditor()
-                deleteProcess(node.id)
-                return
-            }
-
-            if (node.type === 'loop') {
-                const ok = globalThis.confirm('将删除整个 LOOP（含条件与循环体），是否继续？')
-                if (!ok) return
-
-                closeEditor()
-                deleteProcess(node.id)
-                return
-            }
-
-            if (node.type === 'process') {
-                closeEditor()
-                deleteProcess(node.id)
-            }
+            // 有 Undo/Redo：不弹任何确认/提示
+            closeEditor()
+            deleteProcess(node.id)
         },
         [closeEditor, deleteProcess],
     )
@@ -788,9 +790,9 @@ export default function App() {
                     <br />
                     2. 单击选中节点（步骤 / IF / CASE / LOOP）
                     <br />
-                    3. 双击步骤编辑文字
+                    3. 双击步骤编辑文字；双击 LOOP 条件编辑文字
                     <br />
-                    4. 双击 IF/CASE 头部编辑条件；双击 CASE 分支标签编辑分支标签
+                    4. 双击 IF/CASE 头部编辑条件；双击 CASE 分支标签编辑分支标签；双击 IF 的 T/F 切换为 Y/N
                     <br />
                     5. LOOP：点击 L 本体=同级操作；点击 L 内部空洞=块内操作（空洞选中不可删除）
                     <br />
@@ -817,11 +819,13 @@ export default function App() {
                     onIfHeaderSelect={onIfHeaderSelect}
                     onIfHeaderDoubleClick={onIfHeaderDoubleClick}
                     onIfPartSelect={onIfPartSelect}
+                    onIfLabelDoubleClick={onIfLabelDoubleClick}
                     onCaseHeaderSelect={onCaseHeaderSelect}
                     onCaseHeaderDoubleClick={onCaseHeaderDoubleClick}
                     onCasePartSelect={onCasePartSelect}
                     onCaseBranchLabelDoubleClick={onCaseBranchLabelDoubleClick}
                     onLoopSelect={onLoopSelect}
+                    onLoopConditionDoubleClick={onLoopConditionDoubleClick}
                     onLoopHoleSelect={onLoopHoleSelect}
                     onCanvasBlankClick={onCanvasBlankClick}
                     onInsertProcessAfter={onInsertProcessAfter}

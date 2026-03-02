@@ -9,6 +9,7 @@ import {
     polygonPath,
     renderSelectablePlaceholder,
     renderSelectionOutline,
+    safePad,
 } from './renderCommon'
 
 type RenderIfProps = Readonly<{
@@ -21,11 +22,13 @@ type RenderIfProps = Readonly<{
     onIfHeaderSelect: (nodeId: string) => void
     onIfHeaderDoubleClick: (nodeId: string) => void
     onIfPartSelect: (nodeId: string, part: IfPartKey) => void
+    onIfLabelDoubleClick: (nodeId: string, part: 'trueLabel' | 'falseLabel') => void
     onCaseHeaderSelect: (nodeId: string) => void
     onCaseHeaderDoubleClick: (nodeId: string) => void
     onCasePartSelect: (nodeId: string, part: CasePartKey, branchIndex?: number) => void
     onCaseBranchLabelDoubleClick: (nodeId: string, branchIndex: number) => void
     onLoopSelect: (nodeId: string) => void
+    onLoopConditionDoubleClick: (nodeId: string) => void
     onLoopHoleSelect: (nodeId: string) => void
     onInsertProcessAfter: (nodeId: string) => void
     onInsertIfAfter: (nodeId: string) => void
@@ -48,6 +51,26 @@ function getSelectedIfPart(selectedTarget: SelectionTarget | null, ifNodeId: str
     return selectedTarget.part
 }
 
+function clampNumber(value: number, min: number, max: number): number {
+    if (Number.isNaN(value)) return min
+    if (max < min) return (min + max) / 2
+    return Math.max(min, Math.min(max, value))
+}
+
+function diagYOnTrueTriangle(x: number, xLeft: number, yTop: number, xSplit: number, yH: number): number {
+    const denom = xSplit - xLeft
+    if (denom <= 0) return yTop
+    const t = (x - xLeft) / denom
+    return yTop + yH * t
+}
+
+function diagYOnFalseTriangle(x: number, xRight: number, yTop: number, xSplit: number, yH: number): number {
+    const denom = xRight - xSplit
+    if (denom <= 0) return yTop
+    const t = (xRight - x) / denom
+    return yTop + yH * t
+}
+
 function renderBranchContent(params: Readonly<{
     box: LayoutBox
     bodyTopY: number
@@ -61,11 +84,13 @@ function renderBranchContent(params: Readonly<{
     onIfHeaderSelect: (nodeId: string) => void
     onIfHeaderDoubleClick: (nodeId: string) => void
     onIfPartSelect: (nodeId: string, part: IfPartKey) => void
+    onIfLabelDoubleClick: (nodeId: string, part: 'trueLabel' | 'falseLabel') => void
     onCaseHeaderSelect: (nodeId: string) => void
     onCaseHeaderDoubleClick: (nodeId: string) => void
     onCasePartSelect: (nodeId: string, part: CasePartKey, branchIndex?: number) => void
     onCaseBranchLabelDoubleClick: (nodeId: string, branchIndex: number) => void
     onLoopSelect: (nodeId: string) => void
+    onLoopConditionDoubleClick: (nodeId: string) => void
     onLoopHoleSelect: (nodeId: string) => void
     onInsertProcessAfter: (nodeId: string) => void
     onInsertIfAfter: (nodeId: string) => void
@@ -89,11 +114,13 @@ function renderBranchContent(params: Readonly<{
         onIfHeaderSelect,
         onIfHeaderDoubleClick,
         onIfPartSelect,
+        onIfLabelDoubleClick,
         onCaseHeaderSelect,
         onCaseHeaderDoubleClick,
         onCasePartSelect,
         onCaseBranchLabelDoubleClick,
         onLoopSelect,
+        onLoopConditionDoubleClick,
         onLoopHoleSelect,
         onInsertProcessAfter,
         onInsertIfAfter,
@@ -121,11 +148,13 @@ function renderBranchContent(params: Readonly<{
                     onIfHeaderSelect={onIfHeaderSelect}
                     onIfHeaderDoubleClick={onIfHeaderDoubleClick}
                     onIfPartSelect={onIfPartSelect}
+                    onIfLabelDoubleClick={onIfLabelDoubleClick}
                     onCaseHeaderSelect={onCaseHeaderSelect}
                     onCaseHeaderDoubleClick={onCaseHeaderDoubleClick}
                     onCasePartSelect={onCasePartSelect}
                     onCaseBranchLabelDoubleClick={onCaseBranchLabelDoubleClick}
                     onLoopSelect={onLoopSelect}
+                    onLoopConditionDoubleClick={onLoopConditionDoubleClick}
                     onLoopHoleSelect={onLoopHoleSelect}
                     onInsertProcessAfter={onInsertProcessAfter}
                     onInsertIfAfter={onInsertIfAfter}
@@ -149,11 +178,13 @@ function renderBranchContent(params: Readonly<{
                     onIfHeaderSelect={onIfHeaderSelect}
                     onIfHeaderDoubleClick={onIfHeaderDoubleClick}
                     onIfPartSelect={onIfPartSelect}
+                    onIfLabelDoubleClick={onIfLabelDoubleClick}
                     onCaseHeaderSelect={onCaseHeaderSelect}
                     onCaseHeaderDoubleClick={onCaseHeaderDoubleClick}
                     onCasePartSelect={onCasePartSelect}
                     onCaseBranchLabelDoubleClick={onCaseBranchLabelDoubleClick}
                     onLoopSelect={onLoopSelect}
+                    onLoopConditionDoubleClick={onLoopConditionDoubleClick}
                     onLoopHoleSelect={onLoopHoleSelect}
                     onInsertProcessAfter={onInsertProcessAfter}
                     onInsertIfAfter={onInsertIfAfter}
@@ -180,11 +211,13 @@ export function RenderIf(props: RenderIfProps) {
         onIfHeaderSelect,
         onIfHeaderDoubleClick,
         onIfPartSelect,
+        onIfLabelDoubleClick,
         onCaseHeaderSelect,
         onCaseHeaderDoubleClick,
         onCasePartSelect,
         onCaseBranchLabelDoubleClick,
         onLoopSelect,
+        onLoopConditionDoubleClick,
         onLoopHoleSelect,
         onInsertProcessAfter,
         onInsertIfAfter,
@@ -206,19 +239,24 @@ export function RenderIf(props: RenderIfProps) {
     const y = baseBlockHeight(style)
     const headerH = y
 
-    const colW = box.width / 2
-
     const x0 = box.x
     const y0 = box.y
     const w = box.width
+    const xRight = x0 + w
+
+    // 分割点：以第二个分支 box 的 x 为准（layoutIf 会设置 falseBox.x = leftWidth）
+    const splitLocalX = box.children[1]?.x ?? w / 2
+    const leftW = Math.max(0, Math.ceil(splitLocalX))
+    const rightW = Math.max(0, w - leftW)
+    const splitX = x0 + leftW
 
     const diagLeftTop: readonly [number, number] = [x0, y0]
-    const diagRightTop: readonly [number, number] = [x0 + w, y0]
-    const bottomCenter: readonly [number, number] = [x0 + w / 2, y0 + y]
+    const diagRightTop: readonly [number, number] = [xRight, y0]
+    const bottomSplit: readonly [number, number] = [splitX, y0 + y]
 
-    const headerTriangle = [diagLeftTop, diagRightTop, bottomCenter] as const
-    const trueTriangle = [diagLeftTop, bottomCenter, [x0, y0 + y] as const] as const
-    const falseTriangle = [diagRightTop, [x0 + w, y0 + y] as const, bottomCenter] as const
+    const headerTriangle = [diagLeftTop, diagRightTop, bottomSplit] as const
+    const trueTriangle = [diagLeftTop, bottomSplit, [x0, y0 + y] as const] as const
+    const falseTriangle = [diagRightTop, [xRight, y0 + y] as const, bottomSplit] as const
 
     const { trueLabel, falseLabel } = getIfLabels(ifNode)
 
@@ -255,6 +293,20 @@ export function RenderIf(props: RenderIfProps) {
         } satisfies LayoutBox)
         : null
 
+    const labelPad = safePad(style.paddingBranchLabel)
+    const strokePad = Math.max(0, Math.ceil(style.lineWidth))
+    const inset = labelPad + strokePad
+
+    const trueTextX = clampNumber(x0 + inset, x0 + inset, splitX - inset)
+    const falseTextX = clampNumber(xRight - inset, splitX + inset, xRight - inset)
+
+    const trueDiagY = diagYOnTrueTriangle(trueTextX, x0, y0, splitX, y)
+    const falseDiagY = diagYOnFalseTriangle(falseTextX, xRight, y0, splitX, y)
+
+    const bottomY = y0 + y
+    const trueTextY = (trueDiagY + bottomY) / 2
+    const falseTextY = (falseDiagY + bottomY) / 2
+
     return (
         <g>
             <rect
@@ -269,50 +321,21 @@ export function RenderIf(props: RenderIfProps) {
 
             {renderSelectionOutline(isSelected, box)}
 
+            <line x1={x0} y1={y0} x2={bottomSplit[0]} y2={bottomSplit[1]} stroke="black" strokeWidth={style.lineWidth} />
             <line
-                x1={x0}
+                x1={xRight}
                 y1={y0}
-                x2={bottomCenter[0]}
-                y2={bottomCenter[1]}
-                stroke="black"
-                strokeWidth={style.lineWidth}
-            />
-            <line
-                x1={x0 + w}
-                y1={y0}
-                x2={bottomCenter[0]}
-                y2={bottomCenter[1]}
+                x2={bottomSplit[0]}
+                y2={bottomSplit[1]}
                 stroke="black"
                 strokeWidth={style.lineWidth}
             />
 
             {bodyH > 0 ? (
-                <>
-                    <line
-                        x1={x0}
-                        y1={bodyTopY}
-                        x2={x0 + w}
-                        y2={bodyTopY}
-                        stroke="black"
-                        strokeWidth={style.lineWidth}
-                    />
-                    <line
-                        x1={x0 + colW}
-                        y1={bodyTopY}
-                        x2={x0 + colW}
-                        y2={bodyTopY + bodyH}
-                        stroke="black"
-                        strokeWidth={style.lineWidth}
-                    />
-                </>
+                <line x1={x0} y1={bodyTopY} x2={xRight} y2={bodyTopY} stroke="black" strokeWidth={style.lineWidth} />
             ) : null}
 
-            <g
-                onClick={handleHeaderClick}
-                onDoubleClick={handleHeaderDoubleClick}
-                style={{ cursor: 'text' }}
-                aria-label="编辑 IF 条件"
-            >
+            <g onClick={handleHeaderClick} onDoubleClick={handleHeaderDoubleClick} style={{ cursor: 'text' }} aria-label="编辑 IF 条件">
                 <path d={polygonPath(headerTriangle)} fill="transparent" />
                 {selectedIfPart === 'header' ? dashedPolygonOutline(headerTriangle) : null}
 
@@ -335,6 +358,10 @@ export function RenderIf(props: RenderIfProps) {
                     event.stopPropagation()
                     onIfPartSelect(ifNode.id, 'trueLabel')
                 }}
+                onDoubleClick={(event) => {
+                    event.stopPropagation()
+                    onIfLabelDoubleClick(ifNode.id, 'trueLabel')
+                }}
                 style={{ cursor: 'pointer' }}
                 aria-label="选择 IF trueLabel"
             >
@@ -342,9 +369,9 @@ export function RenderIf(props: RenderIfProps) {
                 {selectedIfPart === 'trueLabel' ? dashedPolygonOutline(trueTriangle) : null}
 
                 <text
-                    x={x0 + w * 0.25}
-                    y={y0 + y * 0.72}
-                    textAnchor="middle"
+                    x={trueTextX}
+                    y={trueTextY}
+                    textAnchor="start"
                     dominantBaseline="middle"
                     fontFamily={style.fontFamily}
                     fontSize={style.fontSize}
@@ -360,6 +387,10 @@ export function RenderIf(props: RenderIfProps) {
                     event.stopPropagation()
                     onIfPartSelect(ifNode.id, 'falseLabel')
                 }}
+                onDoubleClick={(event) => {
+                    event.stopPropagation()
+                    onIfLabelDoubleClick(ifNode.id, 'falseLabel')
+                }}
                 style={{ cursor: 'pointer' }}
                 aria-label="选择 IF falseLabel"
             >
@@ -367,9 +398,9 @@ export function RenderIf(props: RenderIfProps) {
                 {selectedIfPart === 'falseLabel' ? dashedPolygonOutline(falseTriangle) : null}
 
                 <text
-                    x={x0 + w * 0.75}
-                    y={y0 + y * 0.72}
-                    textAnchor="middle"
+                    x={falseTextX}
+                    y={falseTextY}
+                    textAnchor="end"
                     dominantBaseline="middle"
                     fontFamily={style.fontFamily}
                     fontSize={style.fontSize}
@@ -384,7 +415,7 @@ export function RenderIf(props: RenderIfProps) {
                 ? renderSelectablePlaceholder({
                     x: x0,
                     y: bodyTopY,
-                    w: colW,
+                    w: leftW,
                     h: bodyH,
                     selected: selectedIfPart === 'trueContainer',
                     onClick: (event) => {
@@ -396,9 +427,9 @@ export function RenderIf(props: RenderIfProps) {
 
             {showFalsePlaceholder
                 ? renderSelectablePlaceholder({
-                    x: x0 + colW,
+                    x: splitX,
                     y: bodyTopY,
-                    w: colW,
+                    w: rightW,
                     h: bodyH,
                     selected: selectedIfPart === 'falseContainer',
                     onClick: (event) => {
@@ -421,11 +452,13 @@ export function RenderIf(props: RenderIfProps) {
                 onIfHeaderSelect,
                 onIfHeaderDoubleClick,
                 onIfPartSelect,
+                onIfLabelDoubleClick,
                 onCaseHeaderSelect,
                 onCaseHeaderDoubleClick,
                 onCasePartSelect,
                 onCaseBranchLabelDoubleClick,
                 onLoopSelect,
+                onLoopConditionDoubleClick,
                 onLoopHoleSelect,
                 onInsertProcessAfter,
                 onInsertIfAfter,

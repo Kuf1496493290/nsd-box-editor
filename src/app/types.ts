@@ -1,3 +1,4 @@
+// FILE: src/app/types.ts
 export type BoolLabelMode = 'TF' | 'YN'
 
 export interface SequenceNode {

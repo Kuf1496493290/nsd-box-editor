@@ -1,3 +1,4 @@
+// FILE: src/components/Toolbar.tsx
 type ToolbarProps = Readonly<{
     canUndo: boolean
     canRedo: boolean

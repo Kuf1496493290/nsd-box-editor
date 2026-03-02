@@ -1,3 +1,4 @@
+// FILE: src/components/PropertyPanel.tsx
 import type { BoolLabelMode, IfNode, NsdNode, StyleConfig } from '../app/types'
 
 interface PropertyPanelProps {

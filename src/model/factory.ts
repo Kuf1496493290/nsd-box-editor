@@ -1,3 +1,4 @@
+// FILE: src/model/factory.ts
 import type { CaseNode, IfNode, LoopKind, LoopNode, ProcessNode, SequenceNode } from '../app/types'
 import { nextId } from '../utils/id'
 

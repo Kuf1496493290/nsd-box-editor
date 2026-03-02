@@ -24,6 +24,7 @@ type RenderCaseProps = Readonly<{
     onIfHeaderSelect: (nodeId: string) => void
     onIfHeaderDoubleClick: (nodeId: string) => void
     onIfPartSelect: (nodeId: string, part: IfPartKey) => void
+    onIfLabelDoubleClick: (nodeId: string, part: 'trueLabel' | 'falseLabel') => void
 
     onCaseHeaderSelect: (nodeId: string) => void
     onCaseHeaderDoubleClick: (nodeId: string) => void
@@ -31,6 +32,7 @@ type RenderCaseProps = Readonly<{
     onCaseBranchLabelDoubleClick: (nodeId: string, branchIndex: number) => void
 
     onLoopSelect: (nodeId: string) => void
+    onLoopConditionDoubleClick: (nodeId: string) => void
     onLoopHoleSelect: (nodeId: string) => void
 
     onInsertProcessAfter: (nodeId: string) => void
@@ -74,11 +76,13 @@ export function RenderCase(props: RenderCaseProps) {
         onIfHeaderSelect,
         onIfHeaderDoubleClick,
         onIfPartSelect,
+        onIfLabelDoubleClick,
         onCaseHeaderSelect,
         onCaseHeaderDoubleClick,
         onCasePartSelect,
         onCaseBranchLabelDoubleClick,
         onLoopSelect,
+        onLoopConditionDoubleClick,
         onLoopHoleSelect,
         onInsertProcessAfter,
         onInsertIfAfter,
@@ -94,7 +98,6 @@ export function RenderCase(props: RenderCaseProps) {
     if (node.type !== 'case') return null
     const caseNode: CaseNode = node
 
-    const branchCount = Math.max(2, caseNode.branches.length)
     const selected = getSelectedCasePart(selectedTarget, caseNode.id)
     const isSelectedNode = selectedNodeId === caseNode.id || selectedTarget?.nodeId === caseNode.id
 
@@ -106,8 +109,19 @@ export function RenderCase(props: RenderCaseProps) {
     const y0 = box.y
     const w = box.width
 
-    const colW = box.width / branchCount
-    const triBase = colW / 2
+    const branchBoxes = box.children
+    const branchCount = Math.max(2, branchBoxes.length)
+
+    // 列位置/宽度以 layout 结果为准（避免 case3 被挤出、分隔线错位）
+    const cols = Array.from({ length: branchCount }, (_, i) => {
+        const b = branchBoxes[i]
+        const colX = x0 + (b?.x ?? 0)
+        const colW = b?.width ?? w / branchCount
+        return { colX, colW }
+    })
+
+    const maxBranchW = Math.max(0, ...cols.map((c) => c.colW))
+    const triBase = Math.min(w / 2, maxBranchW / 2)
 
     const trapPoints = [
         [x0, y0] as const,
@@ -118,14 +132,12 @@ export function RenderCase(props: RenderCaseProps) {
 
     const headerTextX = x0 + w / 2
     const headerTextY = y0 + headerH / 2
-
     const labelTextY = y0 + headerH + labelH / 2
 
     const bodyTopY = y0 + headerH + labelH
     const bodyH = Math.max(0, box.height - headerH - labelH)
 
-    const counts = caseNode.branches.map((b) => b.children.length)
-
+    const counts = Array.from({ length: branchCount }, (_, i) => caseNode.branches[i]?.children.length ?? 0)
     const labels =
         caseNode.branchLabels.length === caseNode.branches.length
             ? caseNode.branchLabels
@@ -140,6 +152,11 @@ export function RenderCase(props: RenderCaseProps) {
         event.stopPropagation()
         onCaseHeaderDoubleClick(caseNode.id)
     }
+
+    // 分隔线位置：每列右边界（除最后一列）
+    const boundaries = cols
+        .slice(0, Math.max(0, branchCount - 1))
+        .map((c) => c.colX + c.colW)
 
     return (
         <g>
@@ -181,20 +198,17 @@ export function RenderCase(props: RenderCaseProps) {
                 strokeWidth={style.lineWidth}
             />
 
-            {Array.from({ length: branchCount - 1 }, (_, i) => {
-                const x = x0 + colW * (i + 1)
-                return (
-                    <line
-                        key={`sep-${caseNode.id}-${i + 1}`}
-                        x1={x}
-                        y1={y0 + headerH}
-                        x2={x}
-                        y2={y0 + headerH + labelH}
-                        stroke="black"
-                        strokeWidth={style.lineWidth}
-                    />
-                )
-            })}
+            {boundaries.map((x, i) => (
+                <line
+                    key={`sep-${caseNode.id}-${i}`}
+                    x1={x}
+                    y1={y0 + headerH}
+                    x2={x}
+                    y2={y0 + headerH + labelH}
+                    stroke="black"
+                    strokeWidth={style.lineWidth}
+                />
+            ))}
 
             {bodyH > 0 ? (
                 <line
@@ -207,12 +221,7 @@ export function RenderCase(props: RenderCaseProps) {
                 />
             ) : null}
 
-            <g
-                onClick={handleHeaderClick}
-                onDoubleClick={handleHeaderDoubleClick}
-                style={{ cursor: 'text' }}
-                aria-label="编辑 CASE 条件"
-            >
+            <g onClick={handleHeaderClick} onDoubleClick={handleHeaderDoubleClick} style={{ cursor: 'text' }} aria-label="编辑 CASE 条件">
                 <path d={polygonPath(trapPoints)} fill="transparent" />
                 {selected.part === 'header' ? dashedPolygonOutline(trapPoints) : null}
 
@@ -232,7 +241,7 @@ export function RenderCase(props: RenderCaseProps) {
 
             {Array.from({ length: branchCount }, (_, i) => {
                 const branch = caseNode.branches[i]
-                const colX = x0 + colW * i
+                const { colX, colW } = cols[i]
                 const selectedLabel = selected.part === 'branchLabel' && selected.branchIndex === i
                 const label = labels[i] ?? String(i + 1)
 
@@ -268,11 +277,11 @@ export function RenderCase(props: RenderCaseProps) {
                     if (c > 0) return null
 
                     const branch = caseNode.branches[i]
-                    const colX = x0 + colW * i
+                    const { colX, colW } = cols[i]
                     const selectedContainer = selected.part === 'branchContainer' && selected.branchIndex === i
 
                     return (
-                        <g key={`ph-${branch.id}`}>
+                        <g key={`ph-${branch?.id ?? `${caseNode.id}-${i}`}`}>
                             {renderSelectablePlaceholder({
                                 x: colX,
                                 y: bodyTopY,
@@ -291,7 +300,7 @@ export function RenderCase(props: RenderCaseProps) {
 
             {bodyH > 0 ? (
                 <g transform={`translate(${x0}, ${bodyTopY})`}>
-                    {box.children.map((branchBox) => {
+                    {branchBoxes.map((branchBox) => {
                         const b = {
                             ...branchBox,
                             y: 0,
@@ -309,11 +318,13 @@ export function RenderCase(props: RenderCaseProps) {
                                 onIfHeaderSelect={onIfHeaderSelect}
                                 onIfHeaderDoubleClick={onIfHeaderDoubleClick}
                                 onIfPartSelect={onIfPartSelect}
+                                onIfLabelDoubleClick={onIfLabelDoubleClick}
                                 onCaseHeaderSelect={onCaseHeaderSelect}
                                 onCaseHeaderDoubleClick={onCaseHeaderDoubleClick}
                                 onCasePartSelect={onCasePartSelect}
                                 onCaseBranchLabelDoubleClick={onCaseBranchLabelDoubleClick}
                                 onLoopSelect={onLoopSelect}
+                                onLoopConditionDoubleClick={onLoopConditionDoubleClick}
                                 onLoopHoleSelect={onLoopHoleSelect}
                                 onInsertProcessAfter={onInsertProcessAfter}
                                 onInsertIfAfter={onInsertIfAfter}

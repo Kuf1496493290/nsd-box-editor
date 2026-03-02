@@ -17,6 +17,7 @@ type RenderLoopProps = Readonly<{
     onIfHeaderSelect: (nodeId: string) => void
     onIfHeaderDoubleClick: (nodeId: string) => void
     onIfPartSelect: (nodeId: string, part: IfPartKey) => void
+    onIfLabelDoubleClick: (nodeId: string, part: 'trueLabel' | 'falseLabel') => void
 
     onCaseHeaderSelect: (nodeId: string) => void
     onCaseHeaderDoubleClick: (nodeId: string) => void
@@ -24,6 +25,7 @@ type RenderLoopProps = Readonly<{
     onCaseBranchLabelDoubleClick: (nodeId: string, branchIndex: number) => void
 
     onLoopSelect: (nodeId: string) => void
+    onLoopConditionDoubleClick: (nodeId: string) => void
     onLoopHoleSelect: (nodeId: string) => void
 
     onInsertProcessAfter: (nodeId: string) => void
@@ -37,23 +39,23 @@ type RenderLoopProps = Readonly<{
     onDeleteProcess: (nodeId: string) => void
 }>
 
+/**
+ * 注意：用户提供的坐标口径是“数学坐标系（y 向上）”，
+ * 但 SVG 使用“屏幕坐标系（y 向下）”。这里直接输出“屏幕坐标系下”的正确外轮廓：
+ *
+ * - WHILE：左上 L（横臂在上、竖臂在左），hole 在右下
+ * - DO-WHILE：右下 L（横臂在下、竖臂在右），hole 在左上
+ */
 function buildLoopPath(kind: 'while' | 'doWhile', L: number, a: number): string {
     const l = Math.max(0, L - a)
 
-    /**
-     * 按你给的“六条边连线坐标”实现：
-     *
-     * DO-WHILE（右下 L）：
-     * (0,0),(L,0),(L,L),(l,L),(l,a),(0,a) 其中 a+l=L
-     *
-     * WHILE（左上 L）：
-     * (0,0),(a,0),(a,l),(L,l),(L,L),(0,L)
-     */
-    if (kind === 'doWhile') {
-        return `M 0 0 L ${L} 0 L ${L} ${L} L ${l} ${L} L ${l} ${a} L 0 ${a} Z`
+    if (kind === 'while') {
+        // 外轮廓 6 点： (0,0)->(L,0)->(L,a)->(a,a)->(a,L)->(0,L)
+        return `M 0 0 L ${L} 0 L ${L} ${a} L ${a} ${a} L ${a} ${L} L 0 ${L} Z`
     }
 
-    return `M 0 0 L ${a} 0 L ${a} ${l} L ${L} ${l} L ${L} ${L} L 0 ${L} Z`
+    // doWhile：外轮廓 6 点： (l,0)->(L,0)->(L,L)->(0,L)->(0,l)->(l,l)
+    return `M ${l} 0 L ${L} 0 L ${L} ${L} L 0 ${L} L 0 ${l} L ${l} ${l} Z`
 }
 
 export function RenderLoop(props: RenderLoopProps) {
@@ -67,11 +69,13 @@ export function RenderLoop(props: RenderLoopProps) {
         onIfHeaderSelect,
         onIfHeaderDoubleClick,
         onIfPartSelect,
+        onIfLabelDoubleClick,
         onCaseHeaderSelect,
         onCaseHeaderDoubleClick,
         onCasePartSelect,
         onCaseBranchLabelDoubleClick,
         onLoopSelect,
+        onLoopConditionDoubleClick,
         onLoopHoleSelect,
         onInsertProcessAfter,
         onInsertIfAfter,
@@ -88,11 +92,8 @@ export function RenderLoop(props: RenderLoopProps) {
 
     const a = loopArmSize(style)
 
-    /**
-     * layoutEngine 已保证 loop 的 LayoutBox width=height=side（轴对称）。
-     * 这里直接使用 height 作为 L。
-     */
-    const L = Math.ceil(box.height)
+    // layoutEngine 口径：loop 必须是正方形（轴对称），这里取最小值更稳健
+    const L = Math.ceil(Math.min(box.width, box.height))
     const l = Math.max(0, L - a)
 
     const holeSelected =
@@ -108,29 +109,29 @@ export function RenderLoop(props: RenderLoopProps) {
     const pathD = buildLoopPath(node.loopKind, L, a)
 
     /**
-     * hole 坐标（按坐标定义推导）：
-     * - DO-WHILE：hole 在 (0,a) 尺寸 l*l
-     * - WHILE：hole 在 (a,0) 尺寸 l*l
+     * hole（空洞）位置（屏幕坐标）：
+     * - WHILE：hole 在 (a,a)
+     * - DO-WHILE：hole 在 (0,0)
      */
     const holeX = isWhile ? a : 0
-    const holeY = isWhile ? 0 : a
+    const holeY = isWhile ? a : 0
 
     /**
-     * 条件文本仅在“横臂”显示：
-     * - DO-WHILE：横臂在顶部（y=0）
-     * - WHILE：横臂在底部（y=l）
+     * 条件文本仅在“横臂”显示（屏幕坐标）：
+     * - WHILE：横臂在顶部（y=0）
+     * - DO-WHILE：横臂在底部（y=l）
      */
-    const textAreaY = isWhile ? l : 0
+    const textAreaY = isWhile ? 0 : l
 
     /**
-     * 点击命中区域（L 本体 = 同级操作）：
-     * - DO-WHILE：横臂=顶部条，竖臂=右侧条
-     * - WHILE：横臂=底部条，竖臂=左侧条
+     * L 本体命中区域（同级操作）：
+     * - WHILE：横臂=顶部条，竖臂=左侧条
+     * - DO-WHILE：横臂=底部条，竖臂=右侧条
      */
     const verticalX = isWhile ? 0 : l
     const verticalW = a
 
-    const horizontalY = isWhile ? l : 0
+    const horizontalY = isWhile ? 0 : l
     const horizontalH = a
 
     function handleLoopClick(event: ReactMouseEvent<SVGGElement>) {
@@ -138,6 +139,12 @@ export function RenderLoop(props: RenderLoopProps) {
         onLoopSelect(node.id)
     }
 
+
+
+    function handleConditionDoubleClick(event: ReactMouseEvent<SVGGElement>) {
+        event.stopPropagation()
+        onLoopConditionDoubleClick(node.id)
+    }
     function handleHoleClick(event: ReactMouseEvent<SVGGElement>) {
         event.stopPropagation()
         onLoopHoleSelect(node.id)
@@ -165,7 +172,7 @@ export function RenderLoop(props: RenderLoopProps) {
                 <rect x={0} y={horizontalY} width={L} height={horizontalH} fill="transparent" />
             </g>
 
-            <g onClick={handleLoopClick} style={{ cursor: 'text' }} aria-label="LOOP 条件（横条）">
+            <g onClick={handleLoopClick} onDoubleClick={handleConditionDoubleClick} style={{ cursor: 'text' }} aria-label="LOOP 条件（横条）">
                 <rect x={0} y={textAreaY} width={L} height={a} fill="transparent" />
                 <text
                     x={L / 2}
@@ -204,11 +211,13 @@ export function RenderLoop(props: RenderLoopProps) {
                         onIfHeaderSelect={onIfHeaderSelect}
                         onIfHeaderDoubleClick={onIfHeaderDoubleClick}
                         onIfPartSelect={onIfPartSelect}
+                        onIfLabelDoubleClick={onIfLabelDoubleClick}
                         onCaseHeaderSelect={onCaseHeaderSelect}
                         onCaseHeaderDoubleClick={onCaseHeaderDoubleClick}
                         onCasePartSelect={onCasePartSelect}
                         onCaseBranchLabelDoubleClick={onCaseBranchLabelDoubleClick}
                         onLoopSelect={onLoopSelect}
+                        onLoopConditionDoubleClick={onLoopConditionDoubleClick}
                         onLoopHoleSelect={onLoopHoleSelect}
                         onInsertProcessAfter={onInsertProcessAfter}
                         onInsertIfAfter={onInsertIfAfter}

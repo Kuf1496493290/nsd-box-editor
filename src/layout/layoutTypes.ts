@@ -1,3 +1,4 @@
+// FILE: src/layout/layoutTypes.ts
 import type { NsdNode } from '../app/types'
 
 export interface LayoutBox {

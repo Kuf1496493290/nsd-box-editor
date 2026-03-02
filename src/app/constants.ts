@@ -1,3 +1,4 @@
+// FILE: src/app/constants.ts
 import type { AppState, SequenceNode, StyleConfig } from './types'
 import { createProcessNode } from '../model/factory'
 

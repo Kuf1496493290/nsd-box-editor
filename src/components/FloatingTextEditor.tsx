@@ -1,3 +1,4 @@
+// FILE: src/components/FloatingTextEditor.tsx
 import { useEffect, useRef } from 'react'
 import type { KeyboardEvent, SyntheticEvent } from 'react'
 

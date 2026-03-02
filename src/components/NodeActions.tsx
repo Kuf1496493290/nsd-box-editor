@@ -1,3 +1,4 @@
+// FILE: src/components/NodeActions.tsx
 import type { MouseEvent as ReactMouseEvent } from 'react'
 
 type NodeActionsProps = Readonly<{

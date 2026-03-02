@@ -1,3 +1,4 @@
+// FILE: src/components/CanvasView.tsx
 import { useMemo } from 'react'
 import type { RefObject } from 'react'
 import type { AppState, CasePartKey, IfPartKey } from '../app/types'
@@ -14,6 +15,7 @@ type CanvasViewProps = Readonly<{
     onIfHeaderSelect: (nodeId: string) => void
     onIfHeaderDoubleClick: (nodeId: string) => void
     onIfPartSelect: (nodeId: string, part: IfPartKey) => void
+    onIfLabelDoubleClick: (nodeId: string, part: 'trueLabel' | 'falseLabel') => void
 
     onCaseHeaderSelect: (nodeId: string) => void
     onCaseHeaderDoubleClick: (nodeId: string) => void
@@ -21,6 +23,7 @@ type CanvasViewProps = Readonly<{
     onCaseBranchLabelDoubleClick: (nodeId: string, branchIndex: number) => void
 
     onLoopSelect: (nodeId: string) => void
+    onLoopConditionDoubleClick: (nodeId: string) => void
     onLoopHoleSelect: (nodeId: string) => void
 
     onCanvasBlankClick: () => void
@@ -45,11 +48,13 @@ export function CanvasView(props: CanvasViewProps) {
         onIfHeaderSelect,
         onIfHeaderDoubleClick,
         onIfPartSelect,
+        onIfLabelDoubleClick,
         onCaseHeaderSelect,
         onCaseHeaderDoubleClick,
         onCasePartSelect,
         onCaseBranchLabelDoubleClick,
         onLoopSelect,
+        onLoopConditionDoubleClick,
         onLoopHoleSelect,
         onCanvasBlankClick,
         onInsertProcessAfter,
@@ -87,11 +92,13 @@ export function CanvasView(props: CanvasViewProps) {
                     onIfHeaderSelect={onIfHeaderSelect}
                     onIfHeaderDoubleClick={onIfHeaderDoubleClick}
                     onIfPartSelect={onIfPartSelect}
+                    onIfLabelDoubleClick={onIfLabelDoubleClick}
                     onCaseHeaderSelect={onCaseHeaderSelect}
                     onCaseHeaderDoubleClick={onCaseHeaderDoubleClick}
                     onCasePartSelect={onCasePartSelect}
                     onCaseBranchLabelDoubleClick={onCaseBranchLabelDoubleClick}
                     onLoopSelect={onLoopSelect}
+                    onLoopConditionDoubleClick={onLoopConditionDoubleClick}
                     onLoopHoleSelect={onLoopHoleSelect}
                     onInsertProcessAfter={onInsertProcessAfter}
                     onInsertIfAfter={onInsertIfAfter}

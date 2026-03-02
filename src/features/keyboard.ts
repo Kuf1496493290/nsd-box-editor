@@ -1,3 +1,4 @@
+// FILE: src/features/keyboard.ts
 export type KeyboardShortcuts = Readonly<{
     onUndo: () => void
     onRedo: () => void

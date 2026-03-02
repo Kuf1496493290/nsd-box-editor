@@ -1,3 +1,4 @@
+// FILE: src/app/state.ts
 import { useMemo, useState } from 'react'
 import type { AppState, BoolLabelMode, NsdNode, SelectionTarget, SequenceNode, StyleConfig } from './types'
 import { createInitialState } from './constants'
@@ -44,6 +45,7 @@ import {
     prependWhileToLoopBody,
     updateCaseBranchLabelInRoot,
     updateCaseConditionTextInRoot,
+    updateLoopConditionTextInRoot,
     updateIfBoolLabelModeInRoot,
     updateIfConditionTextInRoot,
     updateProcessTextInRoot,
@@ -622,6 +624,21 @@ export function useAppState() {
         })
     }
 
+
+    function updateLoopConditionText(nodeId: string, conditionText: string) {
+        setHistory((prev) => {
+            const present = prev.present
+            const result = updateLoopConditionTextInRoot(present.root, nodeId, conditionText)
+            if (!result.changed) return prev
+
+            return commitHistory(prev, {
+                ...present,
+                root: result.root,
+                selectedNodeId: result.selectedNodeId ?? present.selectedNodeId,
+            })
+        })
+    }
+
     function updateCaseBranchLabel(nodeId: string, branchIndex: number, label: string) {
         setHistory((prev) => {
             const present = prev.present
@@ -728,6 +745,7 @@ export function useAppState() {
         updateProcessText,
         updateIfConditionText,
         updateCaseConditionText,
+        updateLoopConditionText,
         updateCaseBranchLabel,
         updateIfBoolLabelMode,
 
