@@ -37,6 +37,9 @@ type CanvasViewProps = Readonly<{
     onMoveProcessUp: (nodeId: string) => void
     onMoveProcessDown: (nodeId: string) => void
     onDeleteProcess: (nodeId: string) => void
+
+    onDeleteSelected: () => void
+    onAddCaseBranch: (caseId: string) => void
 }>
 
 export function CanvasView(props: CanvasViewProps) {
@@ -65,17 +68,24 @@ export function CanvasView(props: CanvasViewProps) {
         onMoveProcessUp,
         onMoveProcessDown,
         onDeleteProcess,
+        onDeleteSelected,
+        onAddCaseBranch,
     } = props
 
     const rootBox = useMemo(() => layoutRoot(state.root, state.style), [state.root, state.style])
 
     const leftPad = 20
-    const topPad = 20
-    const rightPad = 140
-    const bottomPad = 40
 
-    const w = rootBox.width + leftPad + rightPad
-    const h = rootBox.height + topPad + bottomPad
+    const menuTopSafe = 90
+    const menuRightSafe = 220
+    const menuBottomSafe = 80
+
+    const topPad = menuTopSafe
+    const rightPad = menuRightSafe
+    const bottomPad = menuBottomSafe
+
+    const w = Math.ceil(rootBox.width + leftPad + rightPad)
+    const h = Math.ceil(rootBox.height + topPad + bottomPad)
 
     return (
         <svg ref={svgRef} className="canvas" width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
@@ -108,6 +118,8 @@ export function CanvasView(props: CanvasViewProps) {
                     onMoveProcessUp={onMoveProcessUp}
                     onMoveProcessDown={onMoveProcessDown}
                     onDeleteProcess={onDeleteProcess}
+                    onDeleteSelected={onDeleteSelected}
+                    onAddCaseBranch={onAddCaseBranch}
                 />
             </g>
         </svg>

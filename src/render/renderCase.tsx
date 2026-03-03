@@ -44,6 +44,9 @@ type RenderCaseProps = Readonly<{
     onMoveProcessUp: (nodeId: string) => void
     onMoveProcessDown: (nodeId: string) => void
     onDeleteProcess: (nodeId: string) => void
+
+    onDeleteSelected?: () => void
+    onAddCaseBranch?: (caseId: string) => void
 }>
 
 type SelectedCasePart = Readonly<
@@ -63,6 +66,11 @@ function getSelectedCasePart(selectedTarget: SelectionTarget | null, caseId: str
 function labelKey(caseId: string, branchId: string | undefined, index: number): string {
     if (branchId) return `label-${branchId}`
     return `label-${caseId}-${index}`
+}
+
+function placeholderKey(caseId: string, branchId: string | undefined, index: number): string {
+    if (branchId) return `ph-${branchId}`
+    return `ph-${caseId}-${index}`
 }
 
 export function RenderCase(props: RenderCaseProps) {
@@ -92,6 +100,8 @@ export function RenderCase(props: RenderCaseProps) {
         onMoveProcessUp,
         onMoveProcessDown,
         onDeleteProcess,
+        onDeleteSelected,
+        onAddCaseBranch,
     } = props
 
     const node = box.node
@@ -112,7 +122,6 @@ export function RenderCase(props: RenderCaseProps) {
     const branchBoxes = box.children
     const branchCount = Math.max(2, branchBoxes.length)
 
-    // 列位置/宽度以 layout 结果为准（避免 case3 被挤出、分隔线错位）
     const cols = Array.from({ length: branchCount }, (_, i) => {
         const b = branchBoxes[i]
         const colX = x0 + (b?.x ?? 0)
@@ -153,7 +162,6 @@ export function RenderCase(props: RenderCaseProps) {
         onCaseHeaderDoubleClick(caseNode.id)
     }
 
-    // 分隔线位置：每列右边界（除最后一列）
     const boundaries = cols
         .slice(0, Math.max(0, branchCount - 1))
         .map((c) => c.colX + c.colW)
@@ -221,7 +229,13 @@ export function RenderCase(props: RenderCaseProps) {
                 />
             ) : null}
 
-            <g onClick={handleHeaderClick} onDoubleClick={handleHeaderDoubleClick} style={{ cursor: 'text' }} aria-label="编辑 CASE 条件">
+            <g
+                onClick={handleHeaderClick}
+                onDoubleClick={handleHeaderDoubleClick}
+                style={{ cursor: 'pointer' }}
+                aria-label="编辑 CASE 条件"
+            >
+                <rect x={x0} y={y0} width={w} height={headerH} fill="transparent" />
                 <path d={polygonPath(trapPoints)} fill="transparent" />
                 {selected.part === 'header' ? dashedPolygonOutline(trapPoints) : null}
 
@@ -281,7 +295,7 @@ export function RenderCase(props: RenderCaseProps) {
                     const selectedContainer = selected.part === 'branchContainer' && selected.branchIndex === i
 
                     return (
-                        <g key={`ph-${branch?.id ?? `${caseNode.id}-${i}`}`}>
+                        <g key={placeholderKey(caseNode.id, branch?.id, i)}>
                             {renderSelectablePlaceholder({
                                 x: colX,
                                 y: bodyTopY,
@@ -334,6 +348,8 @@ export function RenderCase(props: RenderCaseProps) {
                                 onMoveProcessUp={onMoveProcessUp}
                                 onMoveProcessDown={onMoveProcessDown}
                                 onDeleteProcess={onDeleteProcess}
+                                onDeleteSelected={onDeleteSelected}
+                                onAddCaseBranch={onAddCaseBranch}
                             />
                         )
                     })}

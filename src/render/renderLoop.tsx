@@ -37,24 +37,18 @@ type RenderLoopProps = Readonly<{
     onMoveProcessUp: (nodeId: string) => void
     onMoveProcessDown: (nodeId: string) => void
     onDeleteProcess: (nodeId: string) => void
+
+    onDeleteSelected?: () => void
+    onAddCaseBranch?: (caseId: string) => void
 }>
 
-/**
- * 注意：用户提供的坐标口径是“数学坐标系（y 向上）”，
- * 但 SVG 使用“屏幕坐标系（y 向下）”。这里直接输出“屏幕坐标系下”的正确外轮廓：
- *
- * - WHILE：左上 L（横臂在上、竖臂在左），hole 在右下
- * - DO-WHILE：右下 L（横臂在下、竖臂在右），hole 在左上
- */
 function buildLoopPath(kind: 'while' | 'doWhile', L: number, a: number): string {
     const l = Math.max(0, L - a)
 
     if (kind === 'while') {
-        // 外轮廓 6 点： (0,0)->(L,0)->(L,a)->(a,a)->(a,L)->(0,L)
         return `M 0 0 L ${L} 0 L ${L} ${a} L ${a} ${a} L ${a} ${L} L 0 ${L} Z`
     }
 
-    // doWhile：外轮廓 6 点： (l,0)->(L,0)->(L,L)->(0,L)->(0,l)->(l,l)
     return `M ${l} 0 L ${L} 0 L ${L} ${L} L 0 ${L} L 0 ${l} L ${l} ${l} Z`
 }
 
@@ -85,6 +79,8 @@ export function RenderLoop(props: RenderLoopProps) {
         onMoveProcessUp,
         onMoveProcessDown,
         onDeleteProcess,
+        onDeleteSelected,
+        onAddCaseBranch,
     } = props
 
     const node = box.node
@@ -92,7 +88,6 @@ export function RenderLoop(props: RenderLoopProps) {
 
     const a = loopArmSize(style)
 
-    // layoutEngine 口径：loop 必须是正方形（轴对称），这里取最小值更稳健
     const L = Math.ceil(Math.min(box.width, box.height))
     const l = Math.max(0, L - a)
 
@@ -108,26 +103,11 @@ export function RenderLoop(props: RenderLoopProps) {
     const isWhile = node.loopKind === 'while'
     const pathD = buildLoopPath(node.loopKind, L, a)
 
-    /**
-     * hole（空洞）位置（屏幕坐标）：
-     * - WHILE：hole 在 (a,a)
-     * - DO-WHILE：hole 在 (0,0)
-     */
     const holeX = isWhile ? a : 0
     const holeY = isWhile ? a : 0
 
-    /**
-     * 条件文本仅在“横臂”显示（屏幕坐标）：
-     * - WHILE：横臂在顶部（y=0）
-     * - DO-WHILE：横臂在底部（y=l）
-     */
     const textAreaY = isWhile ? 0 : l
 
-    /**
-     * L 本体命中区域（同级操作）：
-     * - WHILE：横臂=顶部条，竖臂=左侧条
-     * - DO-WHILE：横臂=底部条，竖臂=右侧条
-     */
     const verticalX = isWhile ? 0 : l
     const verticalW = a
 
@@ -139,12 +119,11 @@ export function RenderLoop(props: RenderLoopProps) {
         onLoopSelect(node.id)
     }
 
-
-
     function handleConditionDoubleClick(event: ReactMouseEvent<SVGGElement>) {
         event.stopPropagation()
         onLoopConditionDoubleClick(node.id)
     }
+
     function handleHoleClick(event: ReactMouseEvent<SVGGElement>) {
         event.stopPropagation()
         onLoopHoleSelect(node.id)
@@ -172,7 +151,12 @@ export function RenderLoop(props: RenderLoopProps) {
                 <rect x={0} y={horizontalY} width={L} height={horizontalH} fill="transparent" />
             </g>
 
-            <g onClick={handleLoopClick} onDoubleClick={handleConditionDoubleClick} style={{ cursor: 'text' }} aria-label="LOOP 条件（横条）">
+            <g
+                onClick={handleLoopClick}
+                onDoubleClick={handleConditionDoubleClick}
+                style={{ cursor: 'pointer' }}
+                aria-label="LOOP 条件（横条）"
+            >
                 <rect x={0} y={textAreaY} width={L} height={a} fill="transparent" />
                 <text
                     x={L / 2}
@@ -227,6 +211,8 @@ export function RenderLoop(props: RenderLoopProps) {
                         onMoveProcessUp={onMoveProcessUp}
                         onMoveProcessDown={onMoveProcessDown}
                         onDeleteProcess={onDeleteProcess}
+                        onDeleteSelected={onDeleteSelected}
+                        onAddCaseBranch={onAddCaseBranch}
                     />
                 </g>
             ) : null}

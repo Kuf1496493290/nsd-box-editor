@@ -1,7 +1,8 @@
 // FILE: src/render/renderNode.tsx
 import { useState } from 'react'
-import type { MouseEvent as ReactMouseEvent } from 'react'
+import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react'
 import type { CasePartKey, IfPartKey, SelectionTarget, StyleConfig } from '../app/types'
+import { canDeleteByTarget } from '../app/selection'
 import type { LayoutBox } from '../layout/layoutTypes'
 import { RenderProcess } from './renderProcess'
 import { RenderIf } from './renderIf'
@@ -41,6 +42,11 @@ type RenderNodeProps = Readonly<{
     onMoveProcessUp: (nodeId: string) => void
     onMoveProcessDown: (nodeId: string) => void
     onDeleteProcess: (nodeId: string) => void
+
+    onDeleteSelected?: () => void
+    onAddCaseBranch?: (caseId: string) => void
+
+    onNodePointerDown?: (nodeId: string, event: ReactPointerEvent<SVGGElement>) => void
 }>
 
 type InsertMenuProps = Readonly<{
@@ -53,6 +59,8 @@ type InsertMenuProps = Readonly<{
     onInsertCase: () => void
     onInsertWhile: () => void
     onInsertDoWhile: () => void
+    showAddCaseBranch?: boolean
+    onAddCaseBranch?: () => void
 }>
 
 function stopAndRun(event: ReactMouseEvent<SVGGElement>, fn: () => void) {
@@ -61,92 +69,94 @@ function stopAndRun(event: ReactMouseEvent<SVGGElement>, fn: () => void) {
 }
 
 function InsertMenu(props: InsertMenuProps) {
-    const { x, y, open, onToggle, onInsertProcess, onInsertIf, onInsertCase, onInsertWhile, onInsertDoWhile } = props
+    const {
+        x,
+        y,
+        open,
+        onToggle,
+        onInsertProcess,
+        onInsertIf,
+        onInsertCase,
+        onInsertWhile,
+        onInsertDoWhile,
+        showAddCaseBranch = false,
+        onAddCaseBranch,
+    } = props
 
     function handleToggle(event: ReactMouseEvent<SVGGElement>) {
         event.stopPropagation()
         onToggle()
     }
 
-    const menuX = x + 16
-    const menuY = y - 68
+    const menuX = x + 40
     const menuW = 132
     const itemH = 24
-    const menuH = itemH * 5
+
+    const items: ReadonlyArray<Readonly<{ key: string; label: string; onClick: () => void }>> = (() => {
+        const base = [
+            { key: 'process', label: '插入步骤', onClick: onInsertProcess },
+            { key: 'if', label: '插入 IF', onClick: onInsertIf },
+            { key: 'case', label: '插入 CASE', onClick: onInsertCase },
+            { key: 'while', label: '插入 WHILE', onClick: onInsertWhile },
+            { key: 'doWhile', label: '插入 DO-WHILE', onClick: onInsertDoWhile },
+        ] as const
+
+        if (!showAddCaseBranch || !onAddCaseBranch) return base
+        return [...base, { key: 'addCaseBranch', label: '增加分支', onClick: onAddCaseBranch }]
+    })()
+
+    const menuH = itemH * items.length
+    const menuY = Math.round(y - 8 - menuH / 2)
+
+    const closeHalf = 4
+    const plusHalf = closeHalf * Math.SQRT2
 
     return (
         <g>
             <g
                 transform={`translate(${x}, ${y})`}
                 onClick={handleToggle}
+                onPointerDown={(e) => e.stopPropagation()}
                 style={{ cursor: 'pointer' }}
                 aria-label="插入下一步"
             >
                 <circle cx={0} cy={0} r={10} fill="white" stroke="black" strokeWidth={1} />
-                <line x1={-4} y1={0} x2={4} y2={0} stroke="black" strokeWidth={1.5} />
-                <line x1={0} y1={-4} x2={0} y2={4} stroke="black" strokeWidth={1.5} />
+                <line
+                    x1={-plusHalf}
+                    y1={0}
+                    x2={plusHalf}
+                    y2={0}
+                    stroke="black"
+                    strokeWidth={1.5}
+                    pointerEvents="none"
+                />
+                <line
+                    x1={0}
+                    y1={-plusHalf}
+                    x2={0}
+                    y2={plusHalf}
+                    stroke="black"
+                    strokeWidth={1.5}
+                    pointerEvents="none"
+                />
             </g>
 
             {open ? (
-                <g transform={`translate(${menuX}, ${menuY})`} aria-label="插入类型菜单">
-                    <rect
-                        x={0}
-                        y={0}
-                        width={menuW}
-                        height={menuH}
-                        rx={6}
-                        ry={6}
-                        fill="white"
-                        stroke="black"
-                        strokeWidth={1}
-                    />
+                <g transform={`translate(${menuX}, ${menuY})`} aria-label="插入类型菜单" onPointerDown={(e) => e.stopPropagation()}>
+                    <rect x={0} y={0} width={menuW} height={menuH} rx={6} ry={6} fill="white" stroke="black" strokeWidth={1} />
 
-                    {Array.from({ length: 4 }, (_, i) => (
-                        <line
-                            key={`sep-${i}`}
-                            x1={0}
-                            y1={itemH * (i + 1)}
-                            x2={menuW}
-                            y2={itemH * (i + 1)}
-                            stroke="black"
-                            strokeWidth={1}
-                        />
+                    {Array.from({ length: Math.max(0, items.length - 1) }, (_, i) => (
+                        <line key={`sep-${i}`} x1={0} y1={itemH * (i + 1)} x2={menuW} y2={itemH * (i + 1)} stroke="black" strokeWidth={1} />
                     ))}
 
-                    <g onClick={(e) => stopAndRun(e, onInsertProcess)} style={{ cursor: 'pointer' }}>
-                        <rect x={0} y={0} width={menuW} height={itemH} fill="transparent" />
-                        <text x={8} y={16} fontSize={12} fill="black">
-                            插入步骤
-                        </text>
-                    </g>
-
-                    <g onClick={(e) => stopAndRun(e, onInsertIf)} style={{ cursor: 'pointer' }}>
-                        <rect x={0} y={itemH} width={menuW} height={itemH} fill="transparent" />
-                        <text x={8} y={itemH + 16} fontSize={12} fill="black">
-                            插入 IF
-                        </text>
-                    </g>
-
-                    <g onClick={(e) => stopAndRun(e, onInsertCase)} style={{ cursor: 'pointer' }}>
-                        <rect x={0} y={itemH * 2} width={menuW} height={itemH} fill="transparent" />
-                        <text x={8} y={itemH * 2 + 16} fontSize={12} fill="black">
-                            插入 CASE
-                        </text>
-                    </g>
-
-                    <g onClick={(e) => stopAndRun(e, onInsertWhile)} style={{ cursor: 'pointer' }}>
-                        <rect x={0} y={itemH * 3} width={menuW} height={itemH} fill="transparent" />
-                        <text x={8} y={itemH * 3 + 16} fontSize={12} fill="black">
-                            插入 WHILE
-                        </text>
-                    </g>
-
-                    <g onClick={(e) => stopAndRun(e, onInsertDoWhile)} style={{ cursor: 'pointer' }}>
-                        <rect x={0} y={itemH * 4} width={menuW} height={itemH} fill="transparent" />
-                        <text x={8} y={itemH * 4 + 16} fontSize={12} fill="black">
-                            插入 DO-WHILE
-                        </text>
-                    </g>
+                    {items.map((it, idx) => (
+                        <g key={it.key} onClick={(e) => stopAndRun(e, it.onClick)} style={{ cursor: 'pointer' }}>
+                            <rect x={0} y={itemH * idx} width={menuW} height={itemH} fill="transparent" />
+                            <text x={8} y={itemH * idx + 16} fontSize={12} fill="black">
+                                {it.label}
+                            </text>
+                        </g>
+                    ))}
                 </g>
             ) : null}
         </g>
@@ -156,7 +166,6 @@ function InsertMenu(props: InsertMenuProps) {
 function RenderSequenceNode(props: RenderNodeProps) {
     const {
         box,
-        style,
         selectedNodeId,
         selectedTarget,
         onProcessSelect,
@@ -180,10 +189,12 @@ function RenderSequenceNode(props: RenderNodeProps) {
         onMoveProcessUp,
         onMoveProcessDown,
         onDeleteProcess,
+        onDeleteSelected,
+        onAddCaseBranch,
+        onNodePointerDown,
     } = props
 
     const [openInsertMenuForId, setOpenInsertMenuForId] = useState<string | null>(null)
-    const processIds = box.children.filter((c) => c.node.type === 'process').map((c) => c.node.id)
 
     return (
         <g transform={`translate(${box.x}, ${box.y})`}>
@@ -198,26 +209,36 @@ function RenderSequenceNode(props: RenderNodeProps) {
                 const insertX = c.x + c.width + 18
                 const insertY = c.y + c.height / 2
 
-                const disableInsertMenuWhenLoopHoleSelected =
-                    selectedTarget?.kind === 'loopPart' && selectedTarget.nodeId === c.node.id
+                const isLoopHoleSelected = selectedTarget?.kind === 'loopPart' && selectedTarget.nodeId === c.node.id
+                const showHoverButtons = isInsertableNode && showAsSelected && !isLoopHoleSelected
+                const isInsertMenuOpen = showHoverButtons && openInsertMenuForId === c.node.id
 
-                const showInsertMenuButton =
-                    isInsertableNode && showAsSelected && !disableInsertMenuWhenLoopHoleSelected
+                const deleteEnabled =
+                    showAsSelected &&
+                    !isLoopHoleSelected &&
+                    (selectedTarget?.nodeId === c.node.id ? canDeleteByTarget(selectedTarget) : selectedNodeId === c.node.id)
 
-                const showActions = c.node.type === 'process' && showAsSelected
-                const actionsX = c.x + c.width + 52
-                const actionsY = c.y + c.height / 2
+                const deleteX = insertX + 24
 
-                const processIndex = c.node.type === 'process' ? processIds.indexOf(c.node.id) : -1
-                const disableMoveUp = processIndex <= 0
-                const disableMoveDown = processIndex < 0 || processIndex >= processIds.length - 1
-                const isInsertMenuOpen = showInsertMenuButton && openInsertMenuForId === c.node.id
+                const showAddCaseBranch =
+                    c.node.type === 'case' &&
+                    ((selectedTarget?.kind === 'node' && selectedTarget.nodeId === c.node.id) ||
+                        (selectedTarget === null && selectedNodeId === c.node.id))
 
                 return (
-                    <g key={c.id}>
+                    <g
+                        key={c.id}
+                        onPointerDown={
+                            isInsertableNode && onNodePointerDown
+                                ? (e) => {
+                                    onNodePointerDown(c.node.id, e)
+                                }
+                                : undefined
+                        }
+                    >
                         <RenderNode
                             box={c}
-                            style={style}
+                            style={props.style}
                             selectedNodeId={selectedNodeId}
                             selectedTarget={selectedTarget}
                             onProcessSelect={onProcessSelect}
@@ -241,9 +262,12 @@ function RenderSequenceNode(props: RenderNodeProps) {
                             onMoveProcessUp={onMoveProcessUp}
                             onMoveProcessDown={onMoveProcessDown}
                             onDeleteProcess={onDeleteProcess}
+                            onDeleteSelected={onDeleteSelected}
+                            onAddCaseBranch={onAddCaseBranch}
+                            onNodePointerDown={onNodePointerDown}
                         />
 
-                        {showInsertMenuButton ? (
+                        {showHoverButtons ? (
                             <InsertMenu
                                 x={insertX}
                                 y={insertY}
@@ -271,18 +295,31 @@ function RenderSequenceNode(props: RenderNodeProps) {
                                     setOpenInsertMenuForId(null)
                                     onInsertDoWhileAfter(c.node.id)
                                 }}
+                                showAddCaseBranch={showAddCaseBranch}
+                                onAddCaseBranch={
+                                    showAddCaseBranch && onAddCaseBranch
+                                        ? () => {
+                                            setOpenInsertMenuForId(null)
+                                            onAddCaseBranch(c.node.id)
+                                        }
+                                        : undefined
+                                }
                             />
                         ) : null}
 
-                        {showActions ? (
+                        {showHoverButtons ? (
                             <NodeActions
-                                x={actionsX}
-                                y={actionsY}
-                                onMoveUp={() => onMoveProcessUp(c.node.id)}
-                                onMoveDown={() => onMoveProcessDown(c.node.id)}
-                                onDelete={() => onDeleteProcess(c.node.id)}
-                                disableMoveUp={disableMoveUp}
-                                disableMoveDown={disableMoveDown}
+                                x={deleteX}
+                                y={insertY}
+                                disabled={!deleteEnabled}
+                                onDelete={() => {
+                                    setOpenInsertMenuForId(null)
+                                    if (onDeleteSelected) {
+                                        onDeleteSelected()
+                                        return
+                                    }
+                                    onDeleteProcess(c.node.id)
+                                }}
                             />
                         ) : null}
                     </g>

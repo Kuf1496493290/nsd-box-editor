@@ -1,6 +1,7 @@
 // FILE: src/App.tsx
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CasePartKey, IfPartKey, NsdNode, SelectionTarget, SequenceNode } from './app/types'
+import { canDeleteByTarget } from './app/selection'
 import { useAppState } from './app/state'
 import { Toolbar } from './components/Toolbar'
 import { CanvasView } from './components/CanvasView'
@@ -10,6 +11,18 @@ import { downloadPng, downloadSvg } from './utils/download'
 import { installKeyboardShortcuts } from './features/keyboard'
 
 type EditingKind = 'process' | 'ifCondition' | 'caseCondition' | 'loopCondition' | 'caseBranchLabel'
+
+type InsertOps = Readonly<{
+    insertAfter: (nodeId: string) => void
+
+    prependToIfBranch: (ifNodeId: string, branch: 'true' | 'false') => void
+    appendToIfBranchEnd: (ifNodeId: string, branch: 'true' | 'false') => void
+
+    prependToCaseBranch: (caseNodeId: string, branchIndex: number) => void
+    appendToCaseBranchEnd: (caseNodeId: string, branchIndex: number) => void
+
+    prependToLoopBody: (loopNodeId: string) => void
+}>
 
 function pushSequenceChildren(stack: NsdNode[], node: Extract<NsdNode, { type: 'sequence' }>) {
     for (let i = node.children.length - 1; i >= 0; i -= 1) {
@@ -64,19 +77,58 @@ function findNodeById(root: SequenceNode, nodeId: string | null): NsdNode | null
     return null
 }
 
-function canDeleteByTarget(target: SelectionTarget | null): boolean {
-    if (!target) return false
-    if (target.kind === 'node') return true
+function insertByTarget(anchorNodeId: string, target: SelectionTarget | null, ops: InsertOps) {
+    if (target?.nodeId !== anchorNodeId) {
+        ops.insertAfter(anchorNodeId)
+        return
+    }
+
+    if (target.kind === 'loopPart') {
+        ops.prependToLoopBody(anchorNodeId)
+        return
+    }
+
+    if (target.kind === 'node') {
+        ops.insertAfter(anchorNodeId)
+        return
+    }
 
     if (target.kind === 'ifPart') {
-        return target.part !== 'trueContainer' && target.part !== 'falseContainer'
+        if (target.part === 'trueLabel') {
+            ops.prependToIfBranch(anchorNodeId, 'true')
+            return
+        }
+
+        if (target.part === 'falseLabel') {
+            ops.prependToIfBranch(anchorNodeId, 'false')
+            return
+        }
+
+        if (target.part === 'trueContainer') {
+            ops.appendToIfBranchEnd(anchorNodeId, 'true')
+            return
+        }
+
+        if (target.part === 'falseContainer') {
+            ops.appendToIfBranchEnd(anchorNodeId, 'false')
+            return
+        }
+
+        ops.insertAfter(anchorNodeId)
+        return
     }
 
-    if (target.kind === 'casePart') {
-        return target.part !== 'branchContainer'
+    if (target.part === 'header') {
+        ops.insertAfter(anchorNodeId)
+        return
     }
 
-    return false
+    if (target.part === 'branchLabel') {
+        ops.prependToCaseBranch(anchorNodeId, target.branchIndex)
+        return
+    }
+
+    ops.appendToCaseBranchEnd(anchorNodeId, target.branchIndex)
 }
 
 export default function App() {
@@ -247,8 +299,6 @@ export default function App() {
         openEditor(nodeId, 'ifCondition', node.conditionText)
     }
 
-
-
     function onIfLabelDoubleClick(nodeId: string, part: 'trueLabel' | 'falseLabel') {
         selectTarget({ kind: 'ifPart', nodeId, part })
         closeEditor()
@@ -259,6 +309,7 @@ export default function App() {
         const nextMode = node.boolLabelMode === 'TF' ? 'YN' : 'TF'
         updateIfBoolLabelMode(nodeId, nextMode)
     }
+
     function onIfPartSelect(nodeId: string, part: IfPartKey) {
         selectTarget({ kind: 'ifPart', nodeId, part })
         closeEditor()
@@ -319,8 +370,6 @@ export default function App() {
         closeEditor()
     }
 
-
-
     function onLoopConditionDoubleClick(nodeId: string) {
         selectNode(nodeId)
 
@@ -329,6 +378,7 @@ export default function App() {
 
         openEditor(nodeId, 'loopCondition', node.conditionText)
     }
+
     function onEditorConfirm(nextText: string) {
         if (!editingNodeId) return
 
@@ -367,23 +417,58 @@ export default function App() {
     }
 
     function onInsertProcessAfter(nodeId: string) {
-        addProcessAfter(nodeId)
+        insertByTarget(nodeId, state.selectedTarget, {
+            insertAfter: addProcessAfter,
+            prependToIfBranch: prependProcessInIfBranch,
+            appendToIfBranchEnd: addProcessToIfBranchEnd,
+            prependToCaseBranch: prependProcessInCaseBranch,
+            appendToCaseBranchEnd: addProcessToCaseBranchEnd,
+            prependToLoopBody: prependProcessInLoopBody,
+        })
     }
 
     function onInsertIfAfter(nodeId: string) {
-        addIfAfter(nodeId)
+        insertByTarget(nodeId, state.selectedTarget, {
+            insertAfter: addIfAfter,
+            prependToIfBranch: prependIfInIfBranch,
+            appendToIfBranchEnd: addIfToIfBranchEnd,
+            prependToCaseBranch: prependIfInCaseBranch,
+            appendToCaseBranchEnd: addIfToCaseBranchEnd,
+            prependToLoopBody: prependIfInLoopBody,
+        })
     }
 
     function onInsertCaseAfter(nodeId: string) {
-        addCaseAfter(nodeId)
+        insertByTarget(nodeId, state.selectedTarget, {
+            insertAfter: addCaseAfter,
+            prependToIfBranch: prependCaseInIfBranch,
+            appendToIfBranchEnd: addCaseToIfBranchEnd,
+            prependToCaseBranch: prependCaseInCaseBranch,
+            appendToCaseBranchEnd: addCaseToCaseBranchEnd,
+            prependToLoopBody: prependCaseInLoopBody,
+        })
     }
 
     function onInsertWhileAfter(nodeId: string) {
-        addWhileAfter(nodeId)
+        insertByTarget(nodeId, state.selectedTarget, {
+            insertAfter: addWhileAfter,
+            prependToIfBranch: prependWhileInIfBranch,
+            appendToIfBranchEnd: addWhileToIfBranchEnd,
+            prependToCaseBranch: prependWhileInCaseBranch,
+            appendToCaseBranchEnd: addWhileToCaseBranchEnd,
+            prependToLoopBody: prependWhileInLoopBody,
+        })
     }
 
     function onInsertDoWhileAfter(nodeId: string) {
-        addDoWhileAfter(nodeId)
+        insertByTarget(nodeId, state.selectedTarget, {
+            insertAfter: addDoWhileAfter,
+            prependToIfBranch: prependDoWhileInIfBranch,
+            appendToIfBranchEnd: addDoWhileToIfBranchEnd,
+            prependToCaseBranch: prependDoWhileInCaseBranch,
+            appendToCaseBranchEnd: addDoWhileToCaseBranchEnd,
+            prependToLoopBody: prependDoWhileInLoopBody,
+        })
     }
 
     function onMoveProcessUpLocal(nodeId: string) {
@@ -401,6 +486,14 @@ export default function App() {
         deleteProcess(nodeId)
     }
 
+    const onAddCaseBranchLocal = useCallback(
+        (caseId: string) => {
+            closeEditor()
+            addCaseBranch(caseId)
+        },
+        [addCaseBranch, closeEditor],
+    )
+
     const deleteSelectedCaseBranch = useCallback(
         (node: Extract<NsdNode, { type: 'case' }>, branchIndex: number) => {
             if (node.branches.length > 2) {
@@ -409,7 +502,6 @@ export default function App() {
                 return
             }
 
-            // 分支数 <= 2：删除分支会级联删除整个 CASE（无需提示，可撤销）
             closeEditor()
             deleteProcess(node.id)
         },
@@ -418,7 +510,6 @@ export default function App() {
 
     const deleteSelectedNode = useCallback(
         (node: NsdNode) => {
-            // 有 Undo/Redo：不弹任何确认/提示
             closeEditor()
             deleteProcess(node.id)
         },
@@ -798,15 +889,13 @@ export default function App() {
                     <br />
                     6. 导出 SVG / PNG
                     <br />
-                    7. 选中节点时显示“+”插入菜单（可插入步骤/IF/CASE/WHILE/DO-WHILE）
+                    7. 选中节点时显示悬浮按钮：+（插入菜单） / ×（删除）
                     <br />
-                    8. 选中步骤后：上移 / 下移 / 删除
+                    8. IF 标签区可选中；CASE 分支标签可选中（Delete=删分支）；空容器选中不可删除
                     <br />
-                    9. IF 标签区可选中；CASE 分支标签可选中（Delete=删分支）；空容器选中不可删除
+                    9. 撤销/重做：Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y
                     <br />
-                    10. 撤销/重做：Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y
-                    <br />
-                    11. 删除：Delete（空洞/空容器选中时无效）
+                    10. 删除：Delete（空洞/空容器选中时无效）
                 </div>
             </div>
 
@@ -836,6 +925,8 @@ export default function App() {
                     onMoveProcessUp={onMoveProcessUpLocal}
                     onMoveProcessDown={onMoveProcessDownLocal}
                     onDeleteProcess={onDeleteProcessLocal}
+                    onDeleteSelected={onDeleteSelected}
+                    onAddCaseBranch={onAddCaseBranchLocal}
                 />
 
                 <FloatingTextEditor

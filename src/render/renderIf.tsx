@@ -38,6 +38,9 @@ type RenderIfProps = Readonly<{
     onMoveProcessUp: (nodeId: string) => void
     onMoveProcessDown: (nodeId: string) => void
     onDeleteProcess: (nodeId: string) => void
+
+    onDeleteSelected?: () => void
+    onAddCaseBranch?: (caseId: string) => void
 }>
 
 function getIfLabels(node: IfNode): { trueLabel: string; falseLabel: string } {
@@ -100,6 +103,8 @@ function renderBranchContent(params: Readonly<{
     onMoveProcessUp: (nodeId: string) => void
     onMoveProcessDown: (nodeId: string) => void
     onDeleteProcess: (nodeId: string) => void
+    onDeleteSelected?: () => void
+    onAddCaseBranch?: (caseId: string) => void
 }>): ReactNode {
     const {
         box,
@@ -130,6 +135,8 @@ function renderBranchContent(params: Readonly<{
         onMoveProcessUp,
         onMoveProcessDown,
         onDeleteProcess,
+        onDeleteSelected,
+        onAddCaseBranch,
     } = params
 
     const bodyH = Math.max(0, box.height - (bodyTopY - box.y))
@@ -164,6 +171,8 @@ function renderBranchContent(params: Readonly<{
                     onMoveProcessUp={onMoveProcessUp}
                     onMoveProcessDown={onMoveProcessDown}
                     onDeleteProcess={onDeleteProcess}
+                    onDeleteSelected={onDeleteSelected}
+                    onAddCaseBranch={onAddCaseBranch}
                 />
             ) : null}
 
@@ -194,6 +203,8 @@ function renderBranchContent(params: Readonly<{
                     onMoveProcessUp={onMoveProcessUp}
                     onMoveProcessDown={onMoveProcessDown}
                     onDeleteProcess={onDeleteProcess}
+                    onDeleteSelected={onDeleteSelected}
+                    onAddCaseBranch={onAddCaseBranch}
                 />
             ) : null}
         </g>
@@ -227,6 +238,8 @@ export function RenderIf(props: RenderIfProps) {
         onMoveProcessUp,
         onMoveProcessDown,
         onDeleteProcess,
+        onDeleteSelected,
+        onAddCaseBranch,
     } = props
 
     const node = box.node
@@ -244,7 +257,6 @@ export function RenderIf(props: RenderIfProps) {
     const w = box.width
     const xRight = x0 + w
 
-    // 分割点：以第二个分支 box 的 x 为准（layoutIf 会设置 falseBox.x = leftWidth）
     const splitLocalX = box.children[1]?.x ?? w / 2
     const leftW = Math.max(0, Math.ceil(splitLocalX))
     const rightW = Math.max(0, w - leftW)
@@ -335,7 +347,12 @@ export function RenderIf(props: RenderIfProps) {
                 <line x1={x0} y1={bodyTopY} x2={xRight} y2={bodyTopY} stroke="black" strokeWidth={style.lineWidth} />
             ) : null}
 
-            <g onClick={handleHeaderClick} onDoubleClick={handleHeaderDoubleClick} style={{ cursor: 'text' }} aria-label="编辑 IF 条件">
+            <g
+                onClick={handleHeaderClick}
+                onDoubleClick={handleHeaderDoubleClick}
+                style={{ cursor: 'pointer' }}
+                aria-label="编辑 IF 条件"
+            >
                 <path d={polygonPath(headerTriangle)} fill="transparent" />
                 {selectedIfPart === 'header' ? dashedPolygonOutline(headerTriangle) : null}
 
@@ -468,6 +485,8 @@ export function RenderIf(props: RenderIfProps) {
                 onMoveProcessUp,
                 onMoveProcessDown,
                 onDeleteProcess,
+                onDeleteSelected,
+                onAddCaseBranch,
             })}
         </g>
     )
