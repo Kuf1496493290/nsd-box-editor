@@ -3,7 +3,7 @@ import type { MouseEvent as ReactMouseEvent } from 'react'
 import type { CasePartKey, IfPartKey, SelectionTarget, StyleConfig } from '../app/types'
 import type { LayoutBox } from '../layout/layoutTypes'
 import { RenderNode } from './renderNode'
-import { loopArmSize, renderInvisibleSelectableArea, renderSelectionOutline } from './renderCommon'
+import { loopArmSize, renderSelectablePlaceholder, renderSelectionOutline } from './renderCommon'
 
 type RenderLoopProps = Readonly<{
     box: LayoutBox
@@ -173,7 +173,7 @@ export function RenderLoop(props: RenderLoopProps) {
             </g>
 
             {showHole ? (
-                renderInvisibleSelectableArea({
+                renderSelectablePlaceholder({
                     x: holeX,
                     y: holeY,
                     w: l,

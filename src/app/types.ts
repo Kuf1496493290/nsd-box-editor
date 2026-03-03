@@ -53,12 +53,7 @@ export interface StyleConfig {
     minBlockWidth: number
 }
 
-export type IfPartKey =
-    | 'header'
-    | 'trueLabel'
-    | 'falseLabel'
-    | 'trueContainer'
-    | 'falseContainer'
+export type IfPartKey = 'header' | 'trueLabel' | 'falseLabel' | 'trueContainer' | 'falseContainer'
 
 export type CasePartKey = 'header' | 'branchLabel' | 'branchContainer'
 
@@ -97,3 +92,30 @@ export interface AppState {
     selectedNodeId: string | null
     selectedTarget: SelectionTarget | null
 }
+
+export type DragContainerKey =
+    | { kind: 'root' }
+    | { kind: 'ifBranch'; nodeId: string; branch: 'true' | 'false' }
+    | { kind: 'caseBranch'; nodeId: string; branchIndex: number }
+    | { kind: 'loopBody'; nodeId: string }
+
+export type DragMoveRequest =
+    | Readonly<{
+    kind: 'node'
+    nodeId: string
+    from: DragContainerKey
+    to: DragContainerKey
+    toIndex: number
+}>
+    | Readonly<{
+    kind: 'ifResult'
+    nodeId: string
+    fromBranch: 'true' | 'false'
+    toBranch: 'true' | 'false'
+}>
+    | Readonly<{
+    kind: 'caseResult'
+    nodeId: string
+    fromBranchIndex: number
+    toIndex: number
+}>

@@ -1,6 +1,6 @@
 // FILE: src/render/renderNode.tsx
 import { useState } from 'react'
-import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react'
+import type { MouseEvent as ReactMouseEvent } from 'react'
 import type { CasePartKey, IfPartKey, SelectionTarget, StyleConfig } from '../app/types'
 import { canDeleteByTarget } from '../app/selection'
 import type { LayoutBox } from '../layout/layoutTypes'
@@ -45,8 +45,6 @@ type RenderNodeProps = Readonly<{
 
     onDeleteSelected?: () => void
     onAddCaseBranch?: (caseId: string) => void
-
-    onNodePointerDown?: (nodeId: string, event: ReactPointerEvent<SVGGElement>) => void
 }>
 
 type InsertMenuProps = Readonly<{
@@ -112,13 +110,13 @@ function InsertMenu(props: InsertMenuProps) {
     const plusHalf = closeHalf * Math.SQRT2
 
     return (
-        <g>
+        <g data-no-drag="1">
             <g
                 transform={`translate(${x}, ${y})`}
                 onClick={handleToggle}
-                onPointerDown={(e) => e.stopPropagation()}
                 style={{ cursor: 'pointer' }}
                 aria-label="插入下一步"
+                data-no-drag="1"
             >
                 <circle cx={0} cy={0} r={10} fill="white" stroke="black" strokeWidth={1} />
                 <line
@@ -142,7 +140,7 @@ function InsertMenu(props: InsertMenuProps) {
             </g>
 
             {open ? (
-                <g transform={`translate(${menuX}, ${menuY})`} aria-label="插入类型菜单" onPointerDown={(e) => e.stopPropagation()}>
+                <g transform={`translate(${menuX}, ${menuY})`} aria-label="插入类型菜单" data-no-drag="1">
                     <rect x={0} y={0} width={menuW} height={menuH} rx={6} ry={6} fill="white" stroke="black" strokeWidth={1} />
 
                     {Array.from({ length: Math.max(0, items.length - 1) }, (_, i) => (
@@ -150,7 +148,7 @@ function InsertMenu(props: InsertMenuProps) {
                     ))}
 
                     {items.map((it, idx) => (
-                        <g key={it.key} onClick={(e) => stopAndRun(e, it.onClick)} style={{ cursor: 'pointer' }}>
+                        <g key={it.key} onClick={(e) => stopAndRun(e, it.onClick)} style={{ cursor: 'pointer' }} data-no-drag="1">
                             <rect x={0} y={itemH * idx} width={menuW} height={itemH} fill="transparent" />
                             <text x={8} y={itemH * idx + 16} fontSize={12} fill="black">
                                 {it.label}
@@ -191,7 +189,6 @@ function RenderSequenceNode(props: RenderNodeProps) {
         onDeleteProcess,
         onDeleteSelected,
         onAddCaseBranch,
-        onNodePointerDown,
     } = props
 
     const [openInsertMenuForId, setOpenInsertMenuForId] = useState<string | null>(null)
@@ -226,16 +223,7 @@ function RenderSequenceNode(props: RenderNodeProps) {
                         (selectedTarget === null && selectedNodeId === c.node.id))
 
                 return (
-                    <g
-                        key={c.id}
-                        onPointerDown={
-                            isInsertableNode && onNodePointerDown
-                                ? (e) => {
-                                    onNodePointerDown(c.node.id, e)
-                                }
-                                : undefined
-                        }
-                    >
+                    <g key={c.id} data-drag-node-id={c.node.id}>
                         <RenderNode
                             box={c}
                             style={props.style}
@@ -264,7 +252,6 @@ function RenderSequenceNode(props: RenderNodeProps) {
                             onDeleteProcess={onDeleteProcess}
                             onDeleteSelected={onDeleteSelected}
                             onAddCaseBranch={onAddCaseBranch}
-                            onNodePointerDown={onNodePointerDown}
                         />
 
                         {showHoverButtons ? (
@@ -308,19 +295,21 @@ function RenderSequenceNode(props: RenderNodeProps) {
                         ) : null}
 
                         {showHoverButtons ? (
-                            <NodeActions
-                                x={deleteX}
-                                y={insertY}
-                                disabled={!deleteEnabled}
-                                onDelete={() => {
-                                    setOpenInsertMenuForId(null)
-                                    if (onDeleteSelected) {
-                                        onDeleteSelected()
-                                        return
-                                    }
-                                    onDeleteProcess(c.node.id)
-                                }}
-                            />
+                            <g data-no-drag="1">
+                                <NodeActions
+                                    x={deleteX}
+                                    y={insertY}
+                                    disabled={!deleteEnabled}
+                                    onDelete={() => {
+                                        setOpenInsertMenuForId(null)
+                                        if (onDeleteSelected) {
+                                            onDeleteSelected()
+                                            return
+                                        }
+                                        onDeleteProcess(c.node.id)
+                                    }}
+                                />
+                            </g>
                         ) : null}
                     </g>
                 )

@@ -261,6 +261,8 @@ export function RenderCase(props: RenderCaseProps) {
 
                 return (
                     <g
+                        data-drag-case-id={caseNode.id}
+                        data-drag-case-branch-index={String(i)}
                         key={labelKey(caseNode.id, branch?.id, i)}
                         onDoubleClick={(event) => {
                             event.stopPropagation()

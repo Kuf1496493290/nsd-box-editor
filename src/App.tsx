@@ -1,6 +1,6 @@
 // FILE: src/App.tsx
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { CasePartKey, IfPartKey, NsdNode, SelectionTarget, SequenceNode } from './app/types'
+import type { CasePartKey, DragMoveRequest, IfPartKey, NsdNode, SelectionTarget, SequenceNode } from './app/types'
 import { canDeleteByTarget } from './app/selection'
 import { useAppState } from './app/state'
 import { Toolbar } from './components/Toolbar'
@@ -184,6 +184,7 @@ export default function App() {
 
         moveProcessUp,
         moveProcessDown,
+        moveByDrag,
         deleteProcess,
 
         updateProcessText,
@@ -223,6 +224,14 @@ export default function App() {
         setEditingText('')
         setEditingBranchIndex(null)
     }, [])
+
+    const onMoveByDragLocal = useCallback(
+        (req: DragMoveRequest) => {
+            closeEditor()
+            moveByDrag(req)
+        },
+        [closeEditor, moveByDrag],
+    )
 
     const openEditor = useCallback((nodeId: string, kind: Exclude<EditingKind, 'caseBranchLabel'>, text: string) => {
         setEditingNodeId(nodeId)
@@ -927,6 +936,7 @@ export default function App() {
                     onDeleteProcess={onDeleteProcessLocal}
                     onDeleteSelected={onDeleteSelected}
                     onAddCaseBranch={onAddCaseBranchLocal}
+                    onMoveByDrag={onMoveByDragLocal}
                 />
 
                 <FloatingTextEditor

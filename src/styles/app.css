@@ -75,6 +75,18 @@
     border-radius: 8px;
     background: #fff;
     display: block;
+
+    /* ============ 关键：画布内禁止文本选择（不影响浮层编辑器） ============ */
+    user-select: none;
+    -webkit-user-select: none;
+    -ms-user-select: none;
+}
+
+/* SVG text 在部分浏览器上会绕过父级，显式禁一次更稳 */
+.canvas text {
+    user-select: none;
+    -webkit-user-select: none;
+    -ms-user-select: none;
 }
 
 .field {

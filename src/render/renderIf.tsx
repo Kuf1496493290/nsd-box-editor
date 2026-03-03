@@ -371,6 +371,8 @@ export function RenderIf(props: RenderIfProps) {
             </g>
 
             <g
+                data-drag-if-id={ifNode.id}
+                data-drag-if-branch="true"
                 onClick={(event) => {
                     event.stopPropagation()
                     onIfPartSelect(ifNode.id, 'trueLabel')
@@ -400,6 +402,8 @@ export function RenderIf(props: RenderIfProps) {
             </g>
 
             <g
+                data-drag-if-id={ifNode.id}
+                data-drag-if-branch="false"
                 onClick={(event) => {
                     event.stopPropagation()
                     onIfPartSelect(ifNode.id, 'falseLabel')

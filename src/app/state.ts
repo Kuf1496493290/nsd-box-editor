@@ -1,6 +1,6 @@
 // FILE: src/app/state.ts
 import { useMemo, useState } from 'react'
-import type { AppState, BoolLabelMode, NsdNode, SelectionTarget, SequenceNode, StyleConfig } from './types'
+import type { AppState, BoolLabelMode, DragMoveRequest, NsdNode, SelectionTarget, SequenceNode, StyleConfig } from './types'
 import { createInitialState } from './constants'
 import {
     addCaseBranchInRoot,
@@ -19,6 +19,7 @@ import {
     appendWhileAtEnd,
     appendWhileToCaseBranchEnd,
     appendWhileToIfBranchEnd,
+    applyDragMoveInRoot,
     deleteCaseBranchInRoot,
     deleteNode,
     insertCaseAfter,
@@ -551,6 +552,15 @@ export function useAppState() {
         })
     }
 
+    function moveByDrag(req: DragMoveRequest) {
+        setHistory((prev) => {
+            const present = prev.present
+            const result = applyDragMoveInRoot(present.root, req)
+            if (!result.changed) return prev
+            return commitHistory(prev, withSelection(present, result.root, result.selectedNodeId, result.selectedTarget))
+        })
+    }
+
     function deleteProcess(nodeId: string) {
         setHistory((prev) => {
             const present = prev.present
@@ -740,6 +750,7 @@ export function useAppState() {
 
         moveProcessUp,
         moveProcessDown,
+        moveByDrag,
         deleteProcess,
 
         updateProcessText,
