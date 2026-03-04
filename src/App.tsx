@@ -85,17 +85,17 @@ function insertByTarget(anchorNodeId: string, target: SelectionTarget | null, op
         return
     }
 
-    if (target.kind === 'loopPart') {
+    if (target?.kind === 'loopPart') {
         ops.prependToLoopBody(anchorNodeId)
         return
     }
 
-    if (target.kind === 'node') {
+    if (target?.kind === 'node') {
         ops.insertAfter(anchorNodeId)
         return
     }
 
-    if (target.kind === 'ifPart') {
+    if (target?.kind === 'ifPart') {
         if (target.part === 'trueLabel') {
             ops.prependToIfBranch(anchorNodeId, 'true')
             return
@@ -175,9 +175,7 @@ function pickEnterEditRequest(node: NsdNode, target: SelectionTarget): EnterEdit
             return isIfConditionTarget(target) ? { kind: 'ifCondition', nodeId: node.id, text: node.conditionText } : null
 
         case 'case':
-            return isCaseConditionTarget(target)
-                ? { kind: 'caseCondition', nodeId: node.id, text: node.conditionText }
-                : null
+            return isCaseConditionTarget(target) ? { kind: 'caseCondition', nodeId: node.id, text: node.conditionText } : null
 
         case 'loop':
             return target.kind === 'node' ? { kind: 'loopCondition', nodeId: node.id, text: node.conditionText } : null
@@ -345,7 +343,10 @@ export default function App() {
 
     const selectedNode = useMemo(() => findNodeById(state.root, state.selectedNodeId), [state.root, state.selectedNodeId])
 
-    const canAddCaseBranch = selectedNode?.type === 'case'
+    // 关键：仅当 CASE header（条件框）选中时可“增加分支”
+    const canAddCaseBranch =
+        state.selectedTarget?.kind === 'casePart' && state.selectedTarget.part === 'header'
+
     const canDeleteSelected = useMemo(() => canDeleteByTarget(state.selectedTarget), [state.selectedTarget])
 
     const [editingNodeId, setEditingNodeId] = useState<string | null>(null)
@@ -1027,11 +1028,13 @@ export default function App() {
         addDoWhileAfter(target.nodeId)
     }
 
+    // 关键：Toolbar “增加分支”也只认 CASE header 选中
     const onToolbarAddCaseBranch = useCallback(() => {
-        const n = selectedNode
-        if (n?.type !== 'case') return
-        performAddCaseBranch(n.id)
-    }, [performAddCaseBranch, selectedNode])
+        const t = state.selectedTarget
+        if (t?.kind !== 'casePart') return
+        if (t.part !== 'header') return
+        performAddCaseBranch(t.nodeId)
+    }, [performAddCaseBranch, state.selectedTarget])
 
     const onKeyboardEnter = useCallback((): boolean => {
         const target = state.selectedTarget
@@ -1052,12 +1055,13 @@ export default function App() {
         return true
     }, [openCaseBranchLabelEditor, openEditor, state.root, state.selectedTarget])
 
+    // 关键：Tab 仅在 CASE 条件框（header）选中时生效
     const onKeyboardTab = useCallback((): boolean => {
         const target = state.selectedTarget
         if (!target) return false
 
-        const isCaseCond = target.kind === 'node' || (target.kind === 'casePart' && target.part === 'header')
-        if (!isCaseCond) return false
+        if (target.kind !== 'casePart') return false
+        if (target.part !== 'header') return false
 
         const node = findNodeById(state.root, target.nodeId)
         if (node?.type !== 'case') return false
@@ -1207,13 +1211,7 @@ export default function App() {
                     />
                 </div>
 
-                <FloatingTextEditor
-                    visible={editingNodeId !== null}
-                    value={editingText}
-                    title={editorTitle}
-                    onConfirm={onEditorConfirm}
-                    onCancel={closeEditor}
-                />
+                <FloatingTextEditor visible={editingNodeId !== null} value={editingText} title={editorTitle} onConfirm={onEditorConfirm} onCancel={closeEditor} />
             </div>
         </div>
     )

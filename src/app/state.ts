@@ -46,9 +46,9 @@ import {
     prependWhileToLoopBody,
     updateCaseBranchLabelInRoot,
     updateCaseConditionTextInRoot,
-    updateLoopConditionTextInRoot,
     updateIfBoolLabelModeInRoot,
     updateIfConditionTextInRoot,
+    updateLoopConditionTextInRoot,
     updateProcessTextInRoot,
 } from '../model/treeOps'
 
@@ -59,48 +59,6 @@ type HistoryState = Readonly<{
 }>
 
 const HISTORY_LIMIT = 200
-
-function commitHistory(prev: HistoryState, nextPresent: AppState): HistoryState {
-    const nextPast = [...prev.past, prev.present]
-    const trimmedPast = nextPast.length > HISTORY_LIMIT ? nextPast.slice(nextPast.length - HISTORY_LIMIT) : nextPast
-
-    return {
-        past: trimmedPast,
-        present: nextPresent,
-        future: [],
-    }
-}
-
-function defaultTargetForNode(nodeId: string | null): SelectionTarget | null {
-    if (!nodeId) return null
-    return { kind: 'node', nodeId }
-}
-
-function resolveSelectedTarget(
-    prev: AppState,
-    selectedNodeId: string | null | undefined,
-    selectedTarget: SelectionTarget | null | undefined,
-): SelectionTarget | null {
-    if (selectedTarget !== undefined) return selectedTarget
-    return defaultTargetForNode(selectedNodeId ?? prev.selectedNodeId)
-}
-
-function withSelection(
-    prev: AppState,
-    root: AppState['root'],
-    selectedNodeId?: string | null,
-    selectedTarget?: SelectionTarget | null,
-): AppState {
-    const nextSelectedNodeId = selectedNodeId ?? prev.selectedNodeId
-    const nextTarget = resolveSelectedTarget(prev, nextSelectedNodeId, selectedTarget)
-
-    return {
-        ...prev,
-        root,
-        selectedNodeId: nextSelectedNodeId,
-        selectedTarget: nextTarget,
-    }
-}
 
 function traversalChildren(node: NsdNode): NsdNode[] {
     if (node.type === 'sequence') return node.children
@@ -128,6 +86,90 @@ function containsNode(root: SequenceNode, nodeId: string): boolean {
     return false
 }
 
+function findNodeById(root: SequenceNode, nodeId: string | null): NsdNode | null {
+    if (!nodeId) return null
+
+    const stack: NsdNode[] = [root]
+    while (stack.length > 0) {
+        const current = stack.pop()
+        if (!current) break
+
+        if (current.id === nodeId) return current
+
+        const children = traversalChildren(current)
+        for (let i = children.length - 1; i >= 0; i -= 1) {
+            stack.push(children[i])
+        }
+    }
+
+    return null
+}
+
+function defaultTargetForNode(root: SequenceNode, nodeId: string | null): SelectionTarget | null {
+    if (!nodeId) return null
+
+    const node = findNodeById(root, nodeId)
+    if (!node) return { kind: 'node', nodeId }
+
+    if (node.type === 'if') return { kind: 'ifPart', nodeId, part: 'header' }
+    if (node.type === 'case') return { kind: 'casePart', nodeId, part: 'header' }
+
+    return { kind: 'node', nodeId }
+}
+
+function normalizeTargetKind(root: SequenceNode, target: SelectionTarget): SelectionTarget {
+    if (target.kind !== 'node') return target
+    return defaultTargetForNode(root, target.nodeId) ?? target
+}
+
+type NormalizedSelection = Readonly<{ selectedNodeId: string | null; selectedTarget: SelectionTarget | null }>
+
+function normalizeSelection(next: AppState): AppState {
+    const root = next.root
+    const selectedNodeId0 = next.selectedNodeId
+    const selectedTarget0 = next.selectedTarget
+
+    const targetValid = selectedTarget0 ? containsNode(root, selectedTarget0.nodeId) : true
+    const nodeValid = selectedNodeId0 ? containsNode(root, selectedNodeId0) : true
+
+    const base: NormalizedSelection = (() => {
+        if (!targetValid || !nodeValid) {
+            return { selectedNodeId: null, selectedTarget: null }
+        }
+
+        if (selectedTarget0) {
+            const normalizedTarget = normalizeTargetKind(root, selectedTarget0)
+            return { selectedNodeId: normalizedTarget.nodeId, selectedTarget: normalizedTarget }
+        }
+
+        if (selectedNodeId0) {
+            const filled = defaultTargetForNode(root, selectedNodeId0)
+            return { selectedNodeId: filled ? filled.nodeId : null, selectedTarget: filled }
+        }
+
+        return { selectedNodeId: null, selectedTarget: null }
+    })()
+
+    const sameNode = base.selectedNodeId === next.selectedNodeId
+    const sameTarget = base.selectedTarget === next.selectedTarget
+    if (sameNode && sameTarget) return next
+
+    return { ...next, selectedNodeId: base.selectedNodeId, selectedTarget: base.selectedTarget }
+}
+
+function commitHistory(prev: HistoryState, nextPresent: AppState): HistoryState {
+    const normalizedPresent = normalizeSelection(nextPresent)
+
+    const nextPast = [...prev.past, prev.present]
+    const trimmedPast = nextPast.length > HISTORY_LIMIT ? nextPast.slice(nextPast.length - HISTORY_LIMIT) : nextPast
+
+    return {
+        past: trimmedPast,
+        present: normalizedPresent,
+        future: [],
+    }
+}
+
 function isTargetStillValid(root: SequenceNode, target: SelectionTarget | null): boolean {
     if (!target) return true
     return containsNode(root, target.nodeId)
@@ -139,8 +181,25 @@ function clampScale(value: number): number {
     return Math.round(clamped * 10) / 10
 }
 
+function withSelection(
+    prev: AppState,
+    root: AppState['root'],
+    selectedNodeId?: string | null,
+    selectedTarget?: SelectionTarget | null,
+): AppState {
+    const nextSelectedNodeId = selectedNodeId ?? prev.selectedNodeId
+    const resolvedTarget = selectedTarget === undefined ? defaultTargetForNode(root, nextSelectedNodeId ?? null) : selectedTarget
+
+    return normalizeSelection({
+        ...prev,
+        root,
+        selectedNodeId: nextSelectedNodeId ?? null,
+        selectedTarget: resolvedTarget ?? null,
+    })
+}
+
 export function useAppState() {
-    const initial = useMemo(() => createInitialState(), [])
+    const initial = useMemo(() => normalizeSelection(createInitialState()), [])
     const [history, setHistory] = useState<HistoryState>({
         past: [],
         present: initial,
@@ -169,7 +228,7 @@ export function useAppState() {
 
             return {
                 past: nextPast,
-                present: previous,
+                present: normalizeSelection(previous),
                 future: nextFuture,
             }
         })
@@ -186,7 +245,7 @@ export function useAppState() {
 
             return {
                 past: trimmedPast,
-                present: next,
+                present: normalizeSelection(next),
                 future: nextFuture,
             }
         })
@@ -577,16 +636,16 @@ export function useAppState() {
                 nextSelectedNodeId = null
                 nextSelectedTarget = null
             } else if (deletingSelected) {
-                nextSelectedTarget = defaultTargetForNode(nextSelectedNodeId ?? null)
+                nextSelectedTarget = defaultTargetForNode(result.root, nextSelectedNodeId ?? null)
             } else if (!isTargetStillValid(result.root, nextSelectedTarget)) {
-                nextSelectedTarget = defaultTargetForNode(nextSelectedNodeId ?? null)
+                nextSelectedTarget = defaultTargetForNode(result.root, nextSelectedNodeId ?? null)
             }
 
             return commitHistory(prev, {
                 ...present,
                 root: result.root,
                 selectedNodeId: nextSelectedNodeId ?? null,
-                selectedTarget: nextSelectedTarget,
+                selectedTarget: nextSelectedTarget ?? null,
             })
         })
     }
@@ -601,6 +660,7 @@ export function useAppState() {
                 ...present,
                 root: result.root,
                 selectedNodeId: result.selectedNodeId ?? present.selectedNodeId,
+                selectedTarget: defaultTargetForNode(result.root, result.selectedNodeId ?? present.selectedNodeId),
             })
         })
     }
@@ -615,6 +675,7 @@ export function useAppState() {
                 ...present,
                 root: result.root,
                 selectedNodeId: result.selectedNodeId ?? present.selectedNodeId,
+                selectedTarget: defaultTargetForNode(result.root, result.selectedNodeId ?? present.selectedNodeId),
             })
         })
     }
@@ -629,6 +690,7 @@ export function useAppState() {
                 ...present,
                 root: result.root,
                 selectedNodeId: result.selectedNodeId ?? present.selectedNodeId,
+                selectedTarget: defaultTargetForNode(result.root, result.selectedNodeId ?? present.selectedNodeId),
             })
         })
     }
@@ -643,6 +705,7 @@ export function useAppState() {
                 ...present,
                 root: result.root,
                 selectedNodeId: result.selectedNodeId ?? present.selectedNodeId,
+                selectedTarget: defaultTargetForNode(result.root, result.selectedNodeId ?? present.selectedNodeId),
             })
         })
     }
@@ -666,30 +729,52 @@ export function useAppState() {
                 ...present,
                 root: result.root,
                 selectedNodeId: result.selectedNodeId ?? present.selectedNodeId,
+                selectedTarget: defaultTargetForNode(result.root, result.selectedNodeId ?? present.selectedNodeId),
             })
         })
     }
 
     function selectNode(nodeId: string | null) {
-        setHistory((prev) => ({
-            ...prev,
-            present: {
-                ...prev.present,
-                selectedNodeId: nodeId,
-                selectedTarget: defaultTargetForNode(nodeId),
-            },
-        }))
+        setHistory((prev) => {
+            const present = prev.present
+            const target = defaultTargetForNode(present.root, nodeId)
+            return {
+                ...prev,
+                present: normalizeSelection({
+                    ...present,
+                    selectedNodeId: target ? target.nodeId : null,
+                    selectedTarget: target,
+                }),
+            }
+        })
     }
 
     function selectTarget(target: SelectionTarget | null) {
-        setHistory((prev) => ({
-            ...prev,
-            present: {
-                ...prev.present,
-                selectedTarget: target,
-                selectedNodeId: target ? target.nodeId : null,
-            },
-        }))
+        setHistory((prev) => {
+            const present = prev.present
+
+            if (!target) {
+                return {
+                    ...prev,
+                    present: {
+                        ...present,
+                        selectedTarget: null,
+                        selectedNodeId: null,
+                    },
+                }
+            }
+
+            const normalizedTarget = target.kind === 'node' ? defaultTargetForNode(present.root, target.nodeId) : target
+
+            return {
+                ...prev,
+                present: normalizeSelection({
+                    ...present,
+                    selectedTarget: normalizedTarget,
+                    selectedNodeId: normalizedTarget ? normalizedTarget.nodeId : null,
+                }),
+            }
+        })
     }
 
     return {

@@ -175,24 +175,8 @@ function InsertMenu(props: InsertMenuProps) {
                 data-no-drag="1"
             >
                 <circle cx={0} cy={0} r={10} fill="white" stroke="black" strokeWidth={1} />
-                <line
-                    x1={-plusHalf}
-                    y1={0}
-                    x2={plusHalf}
-                    y2={0}
-                    stroke="black"
-                    strokeWidth={1.5}
-                    pointerEvents="none"
-                />
-                <line
-                    x1={0}
-                    y1={-plusHalf}
-                    x2={0}
-                    y2={plusHalf}
-                    stroke="black"
-                    strokeWidth={1.5}
-                    pointerEvents="none"
-                />
+                <line x1={-plusHalf} y1={0} x2={plusHalf} y2={0} stroke="black" strokeWidth={1.5} pointerEvents="none" />
+                <line x1={0} y1={-plusHalf} x2={0} y2={plusHalf} stroke="black" strokeWidth={1.5} pointerEvents="none" />
             </g>
 
             {open ? (
@@ -212,12 +196,7 @@ function InsertMenu(props: InsertMenuProps) {
                     ))}
 
                     {items.map((it, idx) => (
-                        <g
-                            key={it.key}
-                            onClick={(e) => stopAndRun(e, it.onClick)}
-                            style={{ cursor: 'pointer' }}
-                            data-no-drag="1"
-                        >
+                        <g key={it.key} onClick={(e) => stopAndRun(e, it.onClick)} style={{ cursor: 'pointer' }} data-no-drag="1">
                             <rect x={0} y={itemH * idx} width={menuW} height={itemH} fill="transparent" />
                             <text x={8} y={itemH * idx + 16} fontSize={12} fill="black">
                                 {it.label}
@@ -239,10 +218,7 @@ type HoverOverlay = Readonly<{
     showAddCaseBranch: boolean
 }>
 
-function findAbsLayoutBoxByNodeId(
-    root: LayoutBox,
-    nodeId: string,
-): Readonly<{ absX: number; absY: number; box: LayoutBox }> | null {
+function findAbsLayoutBoxByNodeId(root: LayoutBox, nodeId: string): Readonly<{ absX: number; absY: number; box: LayoutBox }> | null {
     const stack: Array<Readonly<{ box: LayoutBox; absX: number; absY: number }>> = [{ box: root, absX: 0, absY: 0 }]
 
     while (stack.length > 0) {
@@ -593,10 +569,12 @@ export function CanvasView(props: CanvasViewProps) {
 
         const deleteEnabled = target?.nodeId === activeNodeId ? canDeleteByTarget(target) : state.selectedNodeId === activeNodeId
 
+        // 关键：只有 CASE 条件框（header）选中时才允许“增加分支”
         const showAddCaseBranch =
             nodeType === 'case' &&
-            ((target?.kind === 'node' && target.nodeId === activeNodeId) ||
-                (target === null && state.selectedNodeId === activeNodeId))
+            target?.kind === 'casePart' &&
+            target.part === 'header' &&
+            target.nodeId === activeNodeId
 
         return { nodeId: activeNodeId, insertX, insertY, deleteX, deleteEnabled, showAddCaseBranch }
     }, [rootBox, state.selectedNodeId, state.selectedTarget])
@@ -1086,7 +1064,11 @@ export function CanvasView(props: CanvasViewProps) {
                 />
 
                 {dragging ? (
-                    <g transform={`translate(${dragging.pointerX - dragging.grabOffsetX}, ${dragging.pointerY - dragging.grabOffsetY})`} opacity={0.55} pointerEvents="none">
+                    <g
+                        transform={`translate(${dragging.pointerX - dragging.grabOffsetX}, ${dragging.pointerY - dragging.grabOffsetY})`}
+                        opacity={0.55}
+                        pointerEvents="none"
+                    >
                         <RenderNode
                             box={dragging.ghostBox}
                             style={state.style}

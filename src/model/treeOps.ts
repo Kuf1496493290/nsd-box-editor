@@ -1177,6 +1177,7 @@ function moveIfResult(root: SequenceNode, req: Extract<DragMoveRequest, { kind: 
 
 function moveCaseResult(root: SequenceNode, req: Extract<DragMoveRequest, { kind: 'caseResult' }>): UpdateResult {
     let changed = false
+    let selectedBranchIndex: number | null = null
 
     const nextRoot = mapSequence(root, (node) => {
         if (node.type !== 'case') return node
@@ -1186,14 +1187,12 @@ function moveCaseResult(root: SequenceNode, req: Extract<DragMoveRequest, { kind
         if (branchCount <= 1) return node
 
         const from = clampIndex(req.fromBranchIndex, branchCount - 1)
-        const labels = normalizeCaseBranchLabels(node.branchLabels, branchCount)
+        const movingBranch = node.branches[from]
+        if (!movingBranch) return node
 
-        const removedBranch = node.branches[from]
-        const removedLabel = labels[from]
-        if (!removedBranch || removedLabel === undefined) return node
+        const fixedLabels = normalizeCaseBranchLabels(node.branchLabels, branchCount)
 
         const remainingBranches = node.branches.filter((_, i) => i !== from)
-        const remainingLabels = labels.filter((_, i) => i !== from)
 
         let insertAt = clampIndex(req.toIndex, remainingBranches.length)
         if (req.toIndex > from) insertAt = clampIndex(req.toIndex - 1, remainingBranches.length)
@@ -1201,19 +1200,26 @@ function moveCaseResult(root: SequenceNode, req: Extract<DragMoveRequest, { kind
         if (insertAt === from) return node
 
         const nextBranches = [...remainingBranches]
-        const nextLabels = [...remainingLabels]
-        nextBranches.splice(insertAt, 0, removedBranch)
-        nextLabels.splice(insertAt, 0, removedLabel)
+        nextBranches.splice(insertAt, 0, movingBranch)
 
         changed = true
-        return { ...node, branches: nextBranches, branchLabels: nextLabels }
+        selectedBranchIndex = insertAt
+
+        return {
+            ...node,
+            branches: nextBranches,
+            branchLabels: fixedLabels,
+        }
     })
 
     return {
         root: nextRoot,
         changed,
         selectedNodeId: changed ? req.nodeId : undefined,
-        selectedTarget: changed ? { kind: 'node', nodeId: req.nodeId } : undefined,
+        selectedTarget:
+            changed && selectedBranchIndex !== null
+                ? { kind: 'casePart', nodeId: req.nodeId, part: 'branchLabel', branchIndex: selectedBranchIndex }
+                : undefined,
     }
 }
 
