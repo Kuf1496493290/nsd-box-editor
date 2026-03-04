@@ -1,16 +1,28 @@
 // FILE: src/components/CanvasView.tsx
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { PointerEvent as ReactPointerEvent, RefObject } from 'react'
+import {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+    type MouseEvent as ReactMouseEvent,
+    type PointerEvent as ReactPointerEvent,
+    type RefObject,
+} from 'react'
 import type { AppState, CasePartKey, DragContainerKey, DragMoveRequest, IfPartKey } from '../app/types'
+import { canDeleteByTarget } from '../app/selection'
 import { layoutRoot } from '../layout/layoutEngine'
 import type { LayoutBox } from '../layout/layoutTypes'
 import { RenderNode } from '../render/renderNode'
+import { NodeActions } from './NodeActions'
 
 type CanvasViewProps = Readonly<{
     state: AppState
     svgRef: RefObject<SVGSVGElement | null>
 
     onCanvasSize?: (size: Readonly<{ width: number; height: number }>) => void
+
+    onDragStateChange?: (active: boolean) => void
 
     onProcessSelect: (nodeId: string) => void
     onProcessDoubleClick: (nodeId: string) => void
@@ -91,6 +103,165 @@ type DragIndex = Readonly<{
     owners: ReadonlyMap<string, AbsOwnerBox>
 }>
 
+type InsertMenuProps = Readonly<{
+    x: number
+    y: number
+    open: boolean
+    onToggle: () => void
+    onInsertProcess: () => void
+    onInsertIf: () => void
+    onInsertCase: () => void
+    onInsertWhile: () => void
+    onInsertDoWhile: () => void
+    showAddCaseBranch?: boolean
+    onAddCaseBranch?: () => void
+}>
+
+function stopAndRun(event: ReactMouseEvent<SVGGElement>, fn: () => void) {
+    event.stopPropagation()
+    fn()
+}
+
+function InsertMenu(props: InsertMenuProps) {
+    const {
+        x,
+        y,
+        open,
+        onToggle,
+        onInsertProcess,
+        onInsertIf,
+        onInsertCase,
+        onInsertWhile,
+        onInsertDoWhile,
+        showAddCaseBranch = false,
+        onAddCaseBranch,
+    } = props
+
+    function handleToggle(event: ReactMouseEvent<SVGGElement>) {
+        event.stopPropagation()
+        onToggle()
+    }
+
+    const menuX = x + 40
+    const menuW = 132
+    const itemH = 24
+
+    const items: ReadonlyArray<Readonly<{ key: string; label: string; onClick: () => void }>> = (() => {
+        const base = [
+            { key: 'process', label: '插入步骤', onClick: onInsertProcess },
+            { key: 'if', label: '插入 IF', onClick: onInsertIf },
+            { key: 'case', label: '插入 CASE', onClick: onInsertCase },
+            { key: 'while', label: '插入 WHILE', onClick: onInsertWhile },
+            { key: 'doWhile', label: '插入 DO-WHILE', onClick: onInsertDoWhile },
+        ] as const
+
+        if (!showAddCaseBranch || !onAddCaseBranch) return base
+        return [...base, { key: 'addCaseBranch', label: '增加分支', onClick: onAddCaseBranch }]
+    })()
+
+    const menuH = itemH * items.length
+    const menuY = Math.round(y - 8 - menuH / 2)
+
+    const closeHalf = 4
+    const plusHalf = closeHalf * Math.SQRT2
+
+    return (
+        <g data-no-drag="1">
+            <g
+                transform={`translate(${x}, ${y})`}
+                onClick={handleToggle}
+                style={{ cursor: 'pointer' }}
+                aria-label="插入下一步"
+                data-no-drag="1"
+            >
+                <circle cx={0} cy={0} r={10} fill="white" stroke="black" strokeWidth={1} />
+                <line
+                    x1={-plusHalf}
+                    y1={0}
+                    x2={plusHalf}
+                    y2={0}
+                    stroke="black"
+                    strokeWidth={1.5}
+                    pointerEvents="none"
+                />
+                <line
+                    x1={0}
+                    y1={-plusHalf}
+                    x2={0}
+                    y2={plusHalf}
+                    stroke="black"
+                    strokeWidth={1.5}
+                    pointerEvents="none"
+                />
+            </g>
+
+            {open ? (
+                <g transform={`translate(${menuX}, ${menuY})`} aria-label="插入类型菜单" data-no-drag="1">
+                    <rect x={0} y={0} width={menuW} height={menuH} rx={6} ry={6} fill="white" stroke="black" strokeWidth={1} />
+
+                    {Array.from({ length: Math.max(0, items.length - 1) }, (_, i) => (
+                        <line
+                            key={`sep-${i}`}
+                            x1={0}
+                            y1={itemH * (i + 1)}
+                            x2={menuW}
+                            y2={itemH * (i + 1)}
+                            stroke="black"
+                            strokeWidth={1}
+                        />
+                    ))}
+
+                    {items.map((it, idx) => (
+                        <g
+                            key={it.key}
+                            onClick={(e) => stopAndRun(e, it.onClick)}
+                            style={{ cursor: 'pointer' }}
+                            data-no-drag="1"
+                        >
+                            <rect x={0} y={itemH * idx} width={menuW} height={itemH} fill="transparent" />
+                            <text x={8} y={itemH * idx + 16} fontSize={12} fill="black">
+                                {it.label}
+                            </text>
+                        </g>
+                    ))}
+                </g>
+            ) : null}
+        </g>
+    )
+}
+
+type HoverOverlay = Readonly<{
+    nodeId: string
+    insertX: number
+    insertY: number
+    deleteX: number
+    deleteEnabled: boolean
+    showAddCaseBranch: boolean
+}>
+
+function findAbsLayoutBoxByNodeId(
+    root: LayoutBox,
+    nodeId: string,
+): Readonly<{ absX: number; absY: number; box: LayoutBox }> | null {
+    const stack: Array<Readonly<{ box: LayoutBox; absX: number; absY: number }>> = [{ box: root, absX: 0, absY: 0 }]
+
+    while (stack.length > 0) {
+        const cur = stack.pop()
+        if (!cur) break
+
+        if (cur.box.node.id === nodeId) {
+            return { absX: cur.absX, absY: cur.absY, box: cur.box }
+        }
+
+        for (let i = cur.box.children.length - 1; i >= 0; i -= 1) {
+            const c = cur.box.children[i]
+            stack.push({ box: c, absX: cur.absX + c.x, absY: cur.absY + c.y })
+        }
+    }
+
+    return null
+}
+
 /**
  * 命中范围策略：
  * - Sequence 容器：X 基本严格，Y 给一点点 margin 方便“拖到顶部/底部也能插入”
@@ -105,6 +276,12 @@ const OWNER_HIT_MARGIN_Y = 24
 
 const CASE_EDGE_MARGIN_X = 24
 
+function clampScale(value: number): number {
+    const v = Number.isFinite(value) ? value : 1
+    const clamped = Math.max(0.5, Math.min(2, v))
+    return Math.round(clamped * 10) / 10
+}
+
 function ownerKeyOfContainer(container: DragContainerKey): string {
     return container.kind === 'root' ? 'root' : container.nodeId
 }
@@ -115,20 +292,16 @@ function isPointInRectWithMarginXY(
     marginX: number,
     marginY: number,
 ): boolean {
-    return (
-        p.x >= rect.x - marginX &&
-        p.x <= rect.x + rect.w + marginX &&
-        p.y >= rect.y - marginY &&
-        p.y <= rect.y + rect.h + marginY
-    )
+    return p.x >= rect.x - marginX && p.x <= rect.x + rect.w + marginX && p.y >= rect.y - marginY && p.y <= rect.y + rect.h + marginY
 }
 
-function pickDeepestContainer(containers: ReadonlyArray<ContainerInfo>, p: Point): ContainerInfo | null {
+function pickDeepestContainer(containers: ReadonlyArray<ContainerInfo>, p: Point, ownerKey?: string): ContainerInfo | null {
     let best: ContainerInfo | null = null
     let bestArea = Number.POSITIVE_INFINITY
 
     for (const c of containers) {
         if (c.width <= 0 || c.height <= 0) continue
+        if (ownerKey && ownerKeyOfContainer(c.key) !== ownerKey) continue
 
         const hit = isPointInRectWithMarginXY(
             p,
@@ -200,14 +373,7 @@ function buildDragIndex(rootBox: LayoutBox): DragIndex {
         const children: AbsNodeBox[] = seqBox.children.map((c) => {
             const cx = absX + c.x
             const cy = absY + c.y
-            return {
-                nodeId: c.node.id,
-                absX: cx,
-                absY: cy,
-                width: c.width,
-                height: c.height,
-                box: c,
-            }
+            return { nodeId: c.node.id, absX: cx, absY: cy, width: c.width, height: c.height, box: c }
         })
 
         for (let i = 0; i < children.length; i += 1) {
@@ -223,14 +389,7 @@ function buildDragIndex(rootBox: LayoutBox): DragIndex {
             })
         }
 
-        containers.push({
-            key,
-            absX,
-            absY,
-            width: seqBox.width,
-            height: seqBox.height,
-            children,
-        })
+        containers.push({ key, absX, absY, width: seqBox.width, height: seqBox.height, children })
     }
 
     function walkSequenceBox(seq: LayoutBox, absX: number, absY: number, containerKey?: DragContainerKey) {
@@ -310,29 +469,9 @@ function clientToSvgPoint(svg: SVGSVGElement, clientX: number, clientY: number):
 }
 
 type PendingDrag =
-    | Readonly<{
-    kind: 'node'
-    pointerId: number
-    nodeId: string
-    startClientX: number
-    startClientY: number
-}>
-    | Readonly<{
-    kind: 'ifResult'
-    pointerId: number
-    ifId: string
-    fromBranch: 'true' | 'false'
-    startClientX: number
-    startClientY: number
-}>
-    | Readonly<{
-    kind: 'caseResult'
-    pointerId: number
-    caseId: string
-    fromBranchIndex: number
-    startClientX: number
-    startClientY: number
-}>
+    | Readonly<{ kind: 'node'; pointerId: number; nodeId: string; startClientX: number; startClientY: number }>
+    | Readonly<{ kind: 'ifResult'; pointerId: number; ifId: string; fromBranch: 'true' | 'false'; startClientX: number; startClientY: number }>
+    | Readonly<{ kind: 'caseResult'; pointerId: number; caseId: string; fromBranchIndex: number; startClientX: number; startClientY: number }>
 
 type ActiveDrag =
     | Readonly<{
@@ -372,6 +511,7 @@ export function CanvasView(props: CanvasViewProps) {
         state,
         svgRef,
         onCanvasSize,
+        onDragStateChange,
         onProcessSelect,
         onProcessDoubleClick,
         onIfHeaderSelect,
@@ -399,6 +539,7 @@ export function CanvasView(props: CanvasViewProps) {
         onMoveByDrag,
     } = props
 
+    const diagramScale = clampScale(state.scale)
     const rootBox = useMemo(() => layoutRoot(state.root, state.style), [state.root, state.style])
     const dragIndex = useMemo(() => buildDragIndex(rootBox), [rootBox])
 
@@ -410,8 +551,8 @@ export function CanvasView(props: CanvasViewProps) {
     const padX = Math.max(baseLeftPad, menuRightSafe)
     const padY = Math.max(menuTopSafe, menuBottomSafe)
 
-    const w = Math.ceil(rootBox.width + padX * 2)
-    const h = Math.ceil(rootBox.height + padY * 2)
+    const w = Math.ceil((rootBox.width + padX * 2) * diagramScale)
+    const h = Math.ceil((rootBox.height + padY * 2) * diagramScale)
 
     useEffect(() => {
         onCanvasSize?.({ width: w, height: h })
@@ -420,8 +561,74 @@ export function CanvasView(props: CanvasViewProps) {
     const [pending, setPending] = useState<PendingDrag | null>(null)
     const [dragging, setDragging] = useState<ActiveDrag | null>(null)
 
+    useEffect(() => {
+        onDragStateChange?.(pending !== null || dragging !== null)
+    }, [dragging, onDragStateChange, pending])
+
+    useEffect(() => {
+        return () => {
+            onDragStateChange?.(false)
+        }
+    }, [onDragStateChange])
+
+    const [openInsertMenuNodeId, setOpenInsertMenuNodeId] = useState<string | null>(null)
+
+    const hoverOverlay = useMemo<HoverOverlay | null>(() => {
+        const target = state.selectedTarget
+        const activeNodeId = target?.nodeId ?? state.selectedNodeId
+        if (!activeNodeId) return null
+
+        if (target?.kind === 'loopPart') return null
+
+        const found = findAbsLayoutBoxByNodeId(rootBox, activeNodeId)
+        if (!found) return null
+
+        const nodeType = found.box.node.type
+        const isInsertableNode = nodeType === 'process' || nodeType === 'if' || nodeType === 'case' || nodeType === 'loop'
+        if (!isInsertableNode) return null
+
+        const insertX = found.absX + found.box.width + 18
+        const insertY = found.absY + found.box.height / 2
+        const deleteX = insertX + 24
+
+        const deleteEnabled = target?.nodeId === activeNodeId ? canDeleteByTarget(target) : state.selectedNodeId === activeNodeId
+
+        const showAddCaseBranch =
+            nodeType === 'case' &&
+            ((target?.kind === 'node' && target.nodeId === activeNodeId) ||
+                (target === null && state.selectedNodeId === activeNodeId))
+
+        return { nodeId: activeNodeId, insertX, insertY, deleteX, deleteEnabled, showAddCaseBranch }
+    }, [rootBox, state.selectedNodeId, state.selectedTarget])
+
+    const isInsertMenuOpen = hoverOverlay?.nodeId !== undefined && openInsertMenuNodeId === hoverOverlay?.nodeId
+
     const hiddenElRef = useRef<Readonly<{ nodeId: string; prevOpacity: string }> | null>(null)
     const suppressNextClickRef = useRef(false)
+    const suppressClickTimerRef = useRef<number | null>(null)
+
+    const armSuppressNextClick = useCallback(() => {
+        suppressNextClickRef.current = true
+
+        if (suppressClickTimerRef.current !== null) {
+            globalThis.clearTimeout(suppressClickTimerRef.current)
+            suppressClickTimerRef.current = null
+        }
+
+        suppressClickTimerRef.current = globalThis.setTimeout(() => {
+            suppressNextClickRef.current = false
+            suppressClickTimerRef.current = null
+        }, 220)
+    }, [])
+
+    useEffect(() => {
+        return () => {
+            if (suppressClickTimerRef.current !== null) {
+                globalThis.clearTimeout(suppressClickTimerRef.current)
+                suppressClickTimerRef.current = null
+            }
+        }
+    }, [])
 
     const restoreHiddenIfAny = useCallback(() => {
         const svg = svgRef.current
@@ -434,11 +641,17 @@ export function CanvasView(props: CanvasViewProps) {
         hiddenElRef.current = null
     }, [svgRef])
 
+    const handleCanvasBlankClickLocal = useCallback(() => {
+        setOpenInsertMenuNodeId(null)
+        onCanvasBlankClick()
+    }, [onCanvasBlankClick])
+
     function getContentPoint(event: Readonly<{ clientX: number; clientY: number }>): Point | null {
         const svg = svgRef.current
         if (!svg) return null
         const p = clientToSvgPoint(svg, event.clientX, event.clientY)
-        return { x: p.x - padX, y: p.y - padY }
+
+        return { x: p.x / diagramScale - padX, y: p.y / diagramScale - padY }
     }
 
     function tryHideOriginalNode(nodeId: string) {
@@ -452,6 +665,8 @@ export function CanvasView(props: CanvasViewProps) {
     }
 
     function startNodeDrag(nodeId: string, p: Point) {
+        setOpenInsertMenuNodeId(null)
+
         const loc = dragIndex.nodeLocations.get(nodeId)
         if (!loc) return
 
@@ -468,7 +683,7 @@ export function CanvasView(props: CanvasViewProps) {
         const ghostBox: LayoutBox = { ...loc.box, x: 0, y: 0 }
 
         tryHideOriginalNode(nodeId)
-        suppressNextClickRef.current = true
+        armSuppressNextClick()
 
         setDragging({
             kind: 'node',
@@ -484,6 +699,8 @@ export function CanvasView(props: CanvasViewProps) {
     }
 
     function startIfResultDrag(ifId: string, fromBranch: 'true' | 'false', p: Point) {
+        setOpenInsertMenuNodeId(null)
+
         const owner = dragIndex.owners.get(ifId)
         if (!owner) return
         if (owner.box.node.type !== 'if') return
@@ -502,7 +719,7 @@ export function CanvasView(props: CanvasViewProps) {
         const grabOffsetY = p.y - branchAbsY
 
         const ghostBox: LayoutBox = { ...branchBox, x: 0, y: 0, width: fromBranch === 'true' ? leftW : ifBox.width - leftW }
-        suppressNextClickRef.current = true
+        armSuppressNextClick()
 
         setDragging({
             kind: 'ifResult',
@@ -517,6 +734,8 @@ export function CanvasView(props: CanvasViewProps) {
     }
 
     function startCaseResultDrag(caseId: string, fromBranchIndex: number, p: Point) {
+        setOpenInsertMenuNodeId(null)
+
         const owner = dragIndex.owners.get(caseId)
         if (!owner) return
         if (owner.box.node.type !== 'case') return
@@ -532,7 +751,7 @@ export function CanvasView(props: CanvasViewProps) {
         const grabOffsetY = p.y - branchAbsY
 
         const ghostBox: LayoutBox = { ...branchBox, x: 0, y: 0 }
-        suppressNextClickRef.current = true
+        armSuppressNextClick()
 
         setDragging({
             kind: 'caseResult',
@@ -546,6 +765,41 @@ export function CanvasView(props: CanvasViewProps) {
         })
     }
 
+    function selectNodeForPointerDown(nodeId: string) {
+        const loc = dragIndex.nodeLocations.get(nodeId)
+        const t = loc?.box.node.type
+
+        if (t === 'process') {
+            onProcessSelect(nodeId)
+            return
+        }
+
+        if (t === 'loop') {
+            onLoopSelect(nodeId)
+            return
+        }
+
+        if (t === 'if') {
+            onIfHeaderSelect(nodeId)
+            return
+        }
+
+        if (t === 'case') {
+            onCaseHeaderSelect(nodeId)
+            return
+        }
+
+        onProcessSelect(nodeId)
+    }
+
+    function selectIfResultForPointerDown(ifId: string, branch: 'true' | 'false') {
+        onIfPartSelect(ifId, branch === 'true' ? 'trueLabel' : 'falseLabel')
+    }
+
+    function selectCaseResultForPointerDown(caseId: string, branchIndex: number) {
+        onCasePartSelect(caseId, 'branchLabel', branchIndex)
+    }
+
     function tryStartPendingIfResult(event: ReactPointerEvent<SVGSVGElement>, target: Element): boolean {
         const ifEl = target.closest<SVGGElement>('[data-drag-if-id][data-drag-if-branch]')
         if (!ifEl) return false
@@ -553,7 +807,7 @@ export function CanvasView(props: CanvasViewProps) {
         const ifId = ifEl.dataset.dragIfId
         const branch = ifEl.dataset.dragIfBranch
         if (!ifId || (branch !== 'true' && branch !== 'false')) return false
-
+        selectIfResultForPointerDown(ifId, branch)
         setPending({
             kind: 'ifResult',
             pointerId: event.pointerId,
@@ -574,7 +828,7 @@ export function CanvasView(props: CanvasViewProps) {
         const idxRaw = caseEl.dataset.dragCaseBranchIndex
         const idx = idxRaw ? Number(idxRaw) : Number.NaN
         if (!caseId || !Number.isFinite(idx)) return false
-
+        selectCaseResultForPointerDown(caseId, Math.max(0, Math.floor(idx)))
         setPending({
             kind: 'caseResult',
             pointerId: event.pointerId,
@@ -591,7 +845,7 @@ export function CanvasView(props: CanvasViewProps) {
         const dragNode = target.closest<SVGGElement>('[data-drag-node-id]')
         const nodeId = dragNode?.dataset.dragNodeId
         if (!nodeId) return
-
+        selectNodeForPointerDown(nodeId)
         setPending({
             kind: 'node',
             pointerId: event.pointerId,
@@ -666,7 +920,7 @@ export function CanvasView(props: CanvasViewProps) {
     }
 
     function finishNodeDrag(d: Extract<ActiveDrag, { kind: 'node' }>, p: Point) {
-        const targetContainer = pickDeepestContainer(dragIndex.containers, p)
+        const targetContainer = pickDeepestContainer(dragIndex.containers, p, d.fromOwnerKey)
         if (!targetContainer) return
 
         const to = targetContainer.key
@@ -674,13 +928,7 @@ export function CanvasView(props: CanvasViewProps) {
 
         const toIndex = computeInsertIndexByY(targetContainer, p)
 
-        onMoveByDrag({
-            kind: 'node',
-            nodeId: d.nodeId,
-            from: d.from,
-            to,
-            toIndex,
-        })
+        onMoveByDrag({ kind: 'node', nodeId: d.nodeId, from: d.from, to, toIndex })
     }
 
     function finishIfResultDrag(d: Extract<ActiveDrag, { kind: 'ifResult' }>, p: Point) {
@@ -696,18 +944,10 @@ export function CanvasView(props: CanvasViewProps) {
         const toBranch: 'true' | 'false' = p.x < split ? 'true' : 'false'
         if (toBranch === d.fromBranch) return
 
-        onMoveByDrag({
-            kind: 'ifResult',
-            nodeId: d.ifId,
-            fromBranch: d.fromBranch,
-            toBranch,
-        })
+        onMoveByDrag({ kind: 'ifResult', nodeId: d.ifId, fromBranch: d.fromBranch, toBranch })
     }
 
-    function computeCaseResultInsertIndexByX(
-        cols: ReadonlyArray<Readonly<{ x: number; w: number }>>,
-        x: number,
-    ): number | null {
+    function computeCaseResultInsertIndexByX(cols: ReadonlyArray<Readonly<{ x: number; w: number }>>, x: number): number | null {
         if (cols.length <= 1) return null
 
         const leftEdge = cols[0]?.x ?? 0
@@ -735,23 +975,14 @@ export function CanvasView(props: CanvasViewProps) {
         const hit = isPointInRectWithMarginXY(p, rect, OWNER_HIT_MARGIN_X, OWNER_HIT_MARGIN_Y)
         if (!hit) return
 
-        const cols = owner.box.children.map((b) => ({
-            x: owner.absX + b.x,
-            w: b.width,
-        }))
-
+        const cols = owner.box.children.map((b) => ({ x: owner.absX + b.x, w: b.width }))
         const rawToIndex = computeCaseResultInsertIndexByX(cols, p.x)
         if (rawToIndex === null) return
 
         const toIndex = clampInt(rawToIndex, 0, cols.length)
         if (toIndex === d.fromBranchIndex || toIndex === d.fromBranchIndex + 1) return
 
-        onMoveByDrag({
-            kind: 'caseResult',
-            nodeId: d.caseId,
-            fromBranchIndex: d.fromBranchIndex,
-            toIndex,
-        })
+        onMoveByDrag({ kind: 'caseResult', nodeId: d.caseId, fromBranchIndex: d.fromBranchIndex, toIndex })
     }
 
     function handlePointerUpCapture(event: ReactPointerEvent<SVGSVGElement>) {
@@ -796,7 +1027,13 @@ export function CanvasView(props: CanvasViewProps) {
 
     function handleClickCapture(event: ReactPointerEvent<SVGSVGElement>) {
         if (!suppressNextClickRef.current) return
+
         suppressNextClickRef.current = false
+        if (suppressClickTimerRef.current !== null) {
+            globalThis.clearTimeout(suppressClickTimerRef.current)
+            suppressClickTimerRef.current = null
+        }
+
         event.stopPropagation()
         event.preventDefault()
     }
@@ -808,22 +1045,16 @@ export function CanvasView(props: CanvasViewProps) {
             width={w}
             height={h}
             viewBox={`0 0 ${w} ${h}`}
-            style={{
-                position: 'absolute',
-                left: '50%',
-                top: '50%',
-                transform: 'translate(-50%, -50%)',
-                display: 'block',
-            }}
+            style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', display: 'block' }}
             onPointerDownCapture={handlePointerDownCapture}
             onPointerMoveCapture={handlePointerMoveCapture}
             onPointerUpCapture={handlePointerUpCapture}
             onPointerCancelCapture={handlePointerCancelCapture}
             onClickCapture={handleClickCapture}
         >
-            <rect x={0} y={0} width={w} height={h} fill="transparent" onClick={onCanvasBlankClick} />
+            <rect x={0} y={0} width={w} height={h} fill="transparent" onClick={handleCanvasBlankClickLocal} />
 
-            <g transform={`translate(${padX}, ${padY})`}>
+            <g transform={`scale(${diagramScale}) translate(${padX}, ${padY})`}>
                 <RenderNode
                     box={rootBox}
                     style={state.style}
@@ -855,11 +1086,7 @@ export function CanvasView(props: CanvasViewProps) {
                 />
 
                 {dragging ? (
-                    <g
-                        transform={`translate(${dragging.pointerX - dragging.grabOffsetX}, ${dragging.pointerY - dragging.grabOffsetY})`}
-                        opacity={0.55}
-                        pointerEvents="none"
-                    >
+                    <g transform={`translate(${dragging.pointerX - dragging.grabOffsetX}, ${dragging.pointerY - dragging.grabOffsetY})`} opacity={0.55} pointerEvents="none">
                         <RenderNode
                             box={dragging.ghostBox}
                             style={state.style}
@@ -892,6 +1119,58 @@ export function CanvasView(props: CanvasViewProps) {
                     </g>
                 ) : null}
             </g>
+
+            {hoverOverlay && !pending && !dragging ? (
+                <g transform={`scale(${diagramScale}) translate(${padX}, ${padY})`} data-no-drag="1">
+                    <InsertMenu
+                        x={hoverOverlay.insertX}
+                        y={hoverOverlay.insertY}
+                        open={isInsertMenuOpen}
+                        onToggle={() => {
+                            setOpenInsertMenuNodeId((prev) => (prev === hoverOverlay.nodeId ? null : hoverOverlay.nodeId))
+                        }}
+                        onInsertProcess={() => {
+                            setOpenInsertMenuNodeId(null)
+                            onInsertProcessAfter(hoverOverlay.nodeId)
+                        }}
+                        onInsertIf={() => {
+                            setOpenInsertMenuNodeId(null)
+                            onInsertIfAfter(hoverOverlay.nodeId)
+                        }}
+                        onInsertCase={() => {
+                            setOpenInsertMenuNodeId(null)
+                            onInsertCaseAfter(hoverOverlay.nodeId)
+                        }}
+                        onInsertWhile={() => {
+                            setOpenInsertMenuNodeId(null)
+                            onInsertWhileAfter(hoverOverlay.nodeId)
+                        }}
+                        onInsertDoWhile={() => {
+                            setOpenInsertMenuNodeId(null)
+                            onInsertDoWhileAfter(hoverOverlay.nodeId)
+                        }}
+                        showAddCaseBranch={hoverOverlay.showAddCaseBranch}
+                        onAddCaseBranch={
+                            hoverOverlay.showAddCaseBranch
+                                ? () => {
+                                    setOpenInsertMenuNodeId(null)
+                                    onAddCaseBranch(hoverOverlay.nodeId)
+                                }
+                                : undefined
+                        }
+                    />
+
+                    <NodeActions
+                        x={hoverOverlay.deleteX}
+                        y={hoverOverlay.insertY}
+                        disabled={!hoverOverlay.deleteEnabled}
+                        onDelete={() => {
+                            setOpenInsertMenuNodeId(null)
+                            onDeleteSelected()
+                        }}
+                    />
+                </g>
+            ) : null}
         </svg>
     )
 }

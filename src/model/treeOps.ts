@@ -941,13 +941,18 @@ function moveWithinChildren(params: Readonly<{
 
     if (isSameList) {
         const remaining = sourceChildren.filter((_, i) => i !== sourceIndex)
-        const insertAt = clampIndex(toIndex, remaining.length)
+
+        let insertIndex = toIndex
+        if (toIndex > sourceIndex) insertIndex = toIndex - 1
+        const insertAt = clampIndex(insertIndex, remaining.length)
+
         if (insertAt === sourceIndex) {
             return { nextSource: sourceChildren, nextTarget: targetChildren, moved: null, changed: false }
         }
 
         const next = [...remaining]
         next.splice(insertAt, 0, moved)
+
         const changed = next.length === sourceChildren.length && next.some((n, i) => n !== sourceChildren[i])
         return { nextSource: next, nextTarget: next, moved, changed }
     }
@@ -1145,8 +1150,6 @@ function moveNodeDrag(root: SequenceNode, req: Extract<DragMoveRequest, { kind: 
             return moveFromCaseBranch(root, req)
     }
 }
-
-// FILE: src/model/treeOps.ts
 
 function moveIfResult(root: SequenceNode, req: Extract<DragMoveRequest, { kind: 'ifResult' }>): UpdateResult {
     if (req.fromBranch === req.toBranch) return { root, changed: false }

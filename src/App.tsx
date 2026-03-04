@@ -5,7 +5,6 @@ import { canDeleteByTarget } from './app/selection'
 import { useAppState } from './app/state'
 import { Toolbar } from './components/Toolbar'
 import { CanvasView } from './components/CanvasView'
-import { PropertyPanel } from './components/PropertyPanel'
 import { FloatingTextEditor } from './components/FloatingTextEditor'
 import { downloadJson, downloadPng, downloadSvg } from './utils/download'
 import { installKeyboardShortcuts } from './features/keyboard'
@@ -134,12 +133,66 @@ function insertByTarget(anchorNodeId: string, target: SelectionTarget | null, op
     ops.appendToCaseBranchEnd(anchorNodeId, target.branchIndex)
 }
 
+type EnterEditRequest =
+    | Readonly<{ kind: 'caseBranchLabel'; nodeId: string; branchIndex: number; text: string }>
+    | Readonly<{ kind: Exclude<EditingKind, 'caseBranchLabel'>; nodeId: string; text: string }>
+
+function isCaseBranchLabelTarget(
+    target: SelectionTarget,
+): target is Readonly<{ kind: 'casePart'; nodeId: string; part: 'branchLabel'; branchIndex: number }> {
+    return target.kind === 'casePart' && target.part === 'branchLabel'
+}
+
+function isIfConditionTarget(target: SelectionTarget): boolean {
+    return target.kind === 'node' || (target.kind === 'ifPart' && target.part === 'header')
+}
+
+function isCaseConditionTarget(target: SelectionTarget): boolean {
+    return target.kind === 'node' || (target.kind === 'casePart' && target.part === 'header')
+}
+
+/**
+ * Enter 编辑目标拾取（降低 Cognitive Complexity 以满足 Sonar 规则）
+ */
+function pickEnterEditRequest(node: NsdNode, target: SelectionTarget): EnterEditRequest | null {
+    if (isCaseBranchLabelTarget(target)) {
+        if (node.type !== 'case') return null
+
+        const labels =
+            node.branchLabels.length === node.branches.length
+                ? node.branchLabels
+                : node.branches.map((_, i) => node.branchLabels[i] ?? String(i + 1))
+
+        const text = labels[target.branchIndex] ?? String(target.branchIndex + 1)
+        return { kind: 'caseBranchLabel', nodeId: node.id, branchIndex: target.branchIndex, text }
+    }
+
+    switch (node.type) {
+        case 'process':
+            return target.kind === 'node' ? { kind: 'process', nodeId: node.id, text: node.text } : null
+
+        case 'if':
+            return isIfConditionTarget(target) ? { kind: 'ifCondition', nodeId: node.id, text: node.conditionText } : null
+
+        case 'case':
+            return isCaseConditionTarget(target)
+                ? { kind: 'caseCondition', nodeId: node.id, text: node.conditionText }
+                : null
+
+        case 'loop':
+            return target.kind === 'node' ? { kind: 'loopCondition', nodeId: node.id, text: node.conditionText } : null
+
+        default:
+            return null
+    }
+}
+
 export default function App() {
     const {
         state,
         reset,
         replaceState,
-        updateStyle,
+        updateScale,
 
         addProcessAfterEnd,
         addIfAfterEnd,
@@ -216,6 +269,8 @@ export default function App() {
     const [importNotice, setImportNotice] = useState<ImportNotice | null>(null)
     const importNoticeTimerRef = useRef<number | null>(null)
 
+    const [dragActive, setDragActive] = useState(false)
+
     const showImportNotice = useCallback((notice: ImportNotice, timeoutMs = 2000) => {
         setImportNotice(notice)
 
@@ -288,10 +343,7 @@ export default function App() {
         return () => cancelAnimationFrame(id)
     }, [viewportHeight, viewportWidth, wrapSize.height, wrapSize.width])
 
-    const selectedNode = useMemo(
-        () => findNodeById(state.root, state.selectedNodeId),
-        [state.root, state.selectedNodeId],
-    )
+    const selectedNode = useMemo(() => findNodeById(state.root, state.selectedNodeId), [state.root, state.selectedNodeId])
 
     const canAddCaseBranch = selectedNode?.type === 'case'
     const canDeleteSelected = useMemo(() => canDeleteByTarget(state.selectedTarget), [state.selectedTarget])
@@ -307,6 +359,26 @@ export default function App() {
         setEditingText('')
         setEditingBranchIndex(null)
     }, [])
+
+    const performUndo = useCallback(() => {
+        if (!canUndo) return
+        closeEditor()
+        undo()
+    }, [canUndo, closeEditor, undo])
+
+    const performRedo = useCallback(() => {
+        if (!canRedo) return
+        closeEditor()
+        redo()
+    }, [canRedo, closeEditor, redo])
+
+    const performAddCaseBranch = useCallback(
+        (caseId: string) => {
+            closeEditor()
+            addCaseBranch(caseId)
+        },
+        [addCaseBranch, closeEditor],
+    )
 
     const importJsonInputRef = useRef<HTMLInputElement>(null)
 
@@ -348,6 +420,7 @@ export default function App() {
             replaceState({
                 style: result.style,
                 root: result.root,
+                scale: result.scale,
                 selectedNodeId,
                 selectedTarget,
             })
@@ -629,10 +702,9 @@ export default function App() {
 
     const onAddCaseBranchLocal = useCallback(
         (caseId: string) => {
-            closeEditor()
-            addCaseBranch(caseId)
+            performAddCaseBranch(caseId)
         },
-        [addCaseBranch, closeEditor],
+        [performAddCaseBranch],
     )
 
     const deleteSelectedCaseBranch = useCallback(
@@ -955,41 +1027,70 @@ export default function App() {
         addDoWhileAfter(target.nodeId)
     }
 
-    function onToolbarAddCaseBranch() {
-        if (!canAddCaseBranch) return
-        addCaseBranch(selectedNode.id)
-    }
+    const onToolbarAddCaseBranch = useCallback(() => {
+        const n = selectedNode
+        if (n?.type !== 'case') return
+        performAddCaseBranch(n.id)
+    }, [performAddCaseBranch, selectedNode])
 
-    function onToolbarUndo() {
-        if (!canUndo) return
-        closeEditor()
-        undo()
-    }
+    const onKeyboardEnter = useCallback((): boolean => {
+        const target = state.selectedTarget
+        if (!target) return false
 
-    function onToolbarRedo() {
-        if (!canRedo) return
-        closeEditor()
-        redo()
-    }
+        const node = findNodeById(state.root, target.nodeId)
+        if (!node) return false
+
+        const req = pickEnterEditRequest(node, target)
+        if (!req) return false
+
+        if (req.kind === 'caseBranchLabel') {
+            openCaseBranchLabelEditor(req.nodeId, req.branchIndex, req.text)
+            return true
+        }
+
+        openEditor(req.nodeId, req.kind, req.text)
+        return true
+    }, [openCaseBranchLabelEditor, openEditor, state.root, state.selectedTarget])
+
+    const onKeyboardTab = useCallback((): boolean => {
+        const target = state.selectedTarget
+        if (!target) return false
+
+        const isCaseCond = target.kind === 'node' || (target.kind === 'casePart' && target.part === 'header')
+        if (!isCaseCond) return false
+
+        const node = findNodeById(state.root, target.nodeId)
+        if (node?.type !== 'case') return false
+
+        performAddCaseBranch(node.id)
+        return true
+    }, [performAddCaseBranch, state.root, state.selectedTarget])
+
+    const onKeyboardDelete = useCallback((): boolean => {
+        if (!canDeleteSelected) return false
+        onDeleteSelected()
+        return true
+    }, [canDeleteSelected, onDeleteSelected])
 
     useEffect(() => {
         return installKeyboardShortcuts({
-            onUndo: () => {
-                if (!canUndo) return
-                closeEditor()
-                undo()
-            },
-            onRedo: () => {
-                if (!canRedo) return
-                closeEditor()
-                redo()
-            },
-            onDelete: () => {
-                onDeleteSelected()
-            },
+            onUndo: performUndo,
+            onRedo: performRedo,
+            onDelete: onKeyboardDelete,
+            onEnter: onKeyboardEnter,
+            onTab: onKeyboardTab,
             isEditing: () => editingNodeId !== null,
+            isDragActive: () => dragActive,
         })
-    }, [canRedo, canUndo, closeEditor, editingNodeId, onDeleteSelected, redo, undo])
+    }, [dragActive, editingNodeId, onKeyboardDelete, onKeyboardEnter, onKeyboardTab, performRedo, performUndo])
+
+    const onScaleChange = useCallback(
+        (event: ChangeEvent<HTMLInputElement>) => {
+            const raw = Number(event.target.value)
+            updateScale(raw)
+        },
+        [updateScale],
+    )
 
     return (
         <div className="app">
@@ -997,8 +1098,8 @@ export default function App() {
                 <Toolbar
                     canUndo={canUndo}
                     canRedo={canRedo}
-                    onUndo={onToolbarUndo}
-                    onRedo={onToolbarRedo}
+                    onUndo={performUndo}
+                    onRedo={performRedo}
                     onAddProcess={onToolbarAddProcess}
                     onAddIf={onToolbarAddIf}
                     onAddCase={onToolbarAddCase}
@@ -1044,7 +1145,7 @@ export default function App() {
                     <br />
                     5. LOOP：点击 L 本体=同级操作；点击 L 内部空洞=块内操作（空洞选中不可删除）
                     <br />
-                    6. 导出 SVG / PNG
+                    6. 导出 SVG / PNG / JSON（JSON 含缩放倍率）
                     <br />
                     7. 选中节点时显示悬浮按钮：+（插入菜单） / ×（删除）
                     <br />
@@ -1053,6 +1154,14 @@ export default function App() {
                     9. 撤销/重做：Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y
                     <br />
                     10. 删除：Delete（空洞/空容器选中时无效）
+                </div>
+
+                <div className="field" style={{ marginTop: 12 }}>
+                    <div className="label">盒图大小倍率</div>
+                    <div className="sliderRow">
+                        <input type="range" min={0.5} max={2} step={0.1} value={state.scale} onChange={onScaleChange} />
+                        <div className="value">{state.scale.toFixed(1)}</div>
+                    </div>
                 </div>
             </div>
 
@@ -1069,6 +1178,7 @@ export default function App() {
                         state={state}
                         svgRef={svgRef}
                         onCanvasSize={onCanvasSizeChange}
+                        onDragStateChange={setDragActive}
                         onProcessSelect={onProcessSelect}
                         onProcessDoubleClick={onProcessDoubleClick}
                         onIfHeaderSelect={onIfHeaderSelect}
@@ -1103,19 +1213,6 @@ export default function App() {
                     title={editorTitle}
                     onConfirm={onEditorConfirm}
                     onCancel={closeEditor}
-                />
-            </div>
-
-            <div className="panel">
-                <PropertyPanel
-                    style={state.style}
-                    selectedNode={selectedNode}
-                    onChange={updateStyle}
-                    onChangeIfBoolLabelMode={(mode) => {
-                        const n = selectedNode
-                        if (n?.type !== 'if') return
-                        updateIfBoolLabelMode(n.id, mode)
-                    }}
                 />
             </div>
         </div>

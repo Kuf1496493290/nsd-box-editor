@@ -1,6 +1,6 @@
 // FILE: src/app/state.ts
 import { useMemo, useState } from 'react'
-import type { AppState, BoolLabelMode, DragMoveRequest, NsdNode, SelectionTarget, SequenceNode, StyleConfig } from './types'
+import type { AppState, BoolLabelMode, DragMoveRequest, NsdNode, SelectionTarget, SequenceNode } from './types'
 import { createInitialState } from './constants'
 import {
     addCaseBranchInRoot,
@@ -133,6 +133,12 @@ function isTargetStillValid(root: SequenceNode, target: SelectionTarget | null):
     return containsNode(root, target.nodeId)
 }
 
+function clampScale(value: number): number {
+    const v = Number.isFinite(value) ? value : 1
+    const clamped = Math.max(0.5, Math.min(2, v))
+    return Math.round(clamped * 10) / 10
+}
+
 export function useAppState() {
     const initial = useMemo(() => createInitialState(), [])
     const [history, setHistory] = useState<HistoryState>({
@@ -186,22 +192,12 @@ export function useAppState() {
         })
     }
 
-    function updateStyle(patch: Partial<StyleConfig>) {
+    function updateScale(nextScale: number) {
         setHistory((prev) => {
             const present = prev.present
-
-            let changed = false
-            const nextStyle: StyleConfig = { ...present.style }
-            for (const [k, v] of Object.entries(patch)) {
-                const key = k as keyof StyleConfig
-                if (nextStyle[key] !== v) {
-                    changed = true
-                    ;(nextStyle[key] as unknown) = v as unknown
-                }
-            }
-
-            if (!changed) return prev
-            return commitHistory(prev, { ...present, style: nextStyle })
+            const normalized = clampScale(nextScale)
+            if (present.scale === normalized) return prev
+            return commitHistory(prev, { ...present, scale: normalized })
         })
     }
 
@@ -575,8 +571,7 @@ export function useAppState() {
             let nextSelectedNodeId = result.selectedNodeId ?? present.selectedNodeId
             let nextSelectedTarget = present.selectedTarget
 
-            const selectedNodeValid =
-                nextSelectedNodeId === null ? true : containsNode(result.root, nextSelectedNodeId)
+            const selectedNodeValid = nextSelectedNodeId === null ? true : containsNode(result.root, nextSelectedNodeId)
 
             if (!selectedNodeValid) {
                 nextSelectedNodeId = null
@@ -637,7 +632,6 @@ export function useAppState() {
             })
         })
     }
-
 
     function updateLoopConditionText(nodeId: string, conditionText: string) {
         setHistory((prev) => {
@@ -706,7 +700,8 @@ export function useAppState() {
         redo,
         reset,
         replaceState,
-        updateStyle,
+
+        updateScale,
 
         addProcessAfterEnd,
         addIfAfterEnd,

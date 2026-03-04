@@ -8,10 +8,11 @@ type ProjectFileV1 = Readonly<{
     schemaVersion: 1
     root: unknown
     style: unknown
+    scale?: unknown
 }>
 
 export type ProjectParseResult =
-    | Readonly<{ ok: true; root: SequenceNode; style: StyleConfig }>
+    | Readonly<{ ok: true; root: SequenceNode; style: StyleConfig; scale: number }>
     | Readonly<{ ok: false; message: string }>
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -152,6 +153,12 @@ function clampInt(value: number, min: number, max: number): number {
     return Math.round(clampNumber(value, min, max))
 }
 
+function normalizeScale(raw: unknown): number {
+    const v = typeof raw === 'number' ? raw : 1
+    const clamped = clampNumber(v, 0.5, 2)
+    return Math.round(clamped * 10) / 10
+}
+
 function normalizeStyle(raw: unknown): StyleConfig {
     const base: StyleConfig = { ...DEFAULT_STYLE }
     if (!isPlainObject(raw)) return base
@@ -193,6 +200,7 @@ export function buildProjectFile(state: AppState): ProjectFileV1 {
         schemaVersion: PROJECT_SCHEMA_VERSION,
         root: state.root,
         style: state.style,
+        scale: state.scale,
     }
 }
 
@@ -216,11 +224,7 @@ export function parseProjectJsonDetailed(text: string): ProjectParseResult {
     if (!root) return { ok: false, message: '导入失败：root 不是合法的 sequence 结构。' }
 
     const style = normalizeStyle(data.style)
-    return { ok: true, root, style }
-}
+    const scale = normalizeScale(data.scale)
 
-export function parseProjectJson(text: string): Readonly<{ root: SequenceNode; style: StyleConfig }> | null {
-    const r = parseProjectJsonDetailed(text)
-    if (!r.ok) return null
-    return { root: r.root, style: r.style }
+    return { ok: true, root, style, scale }
 }

@@ -89,6 +89,7 @@ export type SelectionTarget =
 export interface AppState {
     style: StyleConfig
     root: SequenceNode
+    scale: number
     selectedNodeId: string | null
     selectedTarget: SelectionTarget | null
 }

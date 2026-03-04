@@ -34,6 +34,7 @@ export function createInitialState(): AppState {
     return {
         style: { ...DEFAULT_STYLE },
         root,
+        scale: 1,
         selectedNodeId: first ? first.id : null,
         selectedTarget: first ? { kind: 'node', nodeId: first.id } : null,
     }
