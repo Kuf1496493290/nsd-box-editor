@@ -1,108 +1,183 @@
-# NSD Box Editor / NSD 框图编辑器
+# NSD Box Editor
 
-一个基于 React + TypeScript + Vite 的 Nassi-Shneiderman Diagram (NSD) 可视化编辑器。  
-A visual editor for Nassi-Shneiderman Diagrams (NSD), built with React + TypeScript + Vite.
+## 中文说明
 
-## 1. 项目简介 / Overview
+### 项目简介
 
-- 中文：用于创建、编辑和重排流程结构节点（Process / If / Case / Loop）的前端工具。  
-- EN: A frontend tool to create, edit, and reorder structured flow nodes (Process / If / Case / Loop).
+这是一个基于 React + TypeScript + Vite 的 Nassi-Shneiderman Diagram (NSD) 可视化编辑器。
 
-- 中文：支持树形结构数据编辑、画布交互和 JSON 导入导出。  
-- EN: Supports tree-structured editing, canvas interactions, and JSON import/export.
+该编辑器用于创建、编辑和重排流程结构节点（Process / If / Case / Loop），支持树形结构数据编辑、画布交互，以及 JSON 导入导出。
 
-## 2. 功能特性 / Features
+### 功能特性
 
-- 中文：新增、插入、删除、上下移动节点。  
-- EN: Add, insert, delete, and move nodes up/down.
+- 新增、插入、删除、上下移动节点
+- 支持 If 分支、Case 多分支、While / Do-While 循环
+- 支持拖拽重排（同容器内节点与结果分支调整）
+- 支持节点文本与条件文本编辑
+- 支持项目 JSON 下载与加载
 
-- 中文：支持 If 分支、Case 多分支、While / Do-While 循环。  
-- EN: Supports If branches, Case multi-branches, and While / Do-While loops.
-
-- 中文：支持拖拽重排（同容器内节点与结果分支调整）。  
-- EN: Supports drag-and-drop reordering (intra-container nodes and result branches).
-
-- 中文：支持节点文本与条件文本编辑。  
-- EN: Editable node text and condition text.
-
-- 中文：支持项目 JSON 下载与加载。  
-- EN: Project JSON download and load.
-
-## 3. 技术栈 / Tech Stack
+### 技术栈
 
 - React 19
 - TypeScript 5
 - Vite 7
 - ESLint 9
 
-## 4. 快速开始 / Quick Start
+### 快速开始
 
-### 4.1 环境要求 / Prerequisites
+#### 环境要求
 
-- Node.js 18+（建议 LTS）  
+- Node.js 18+（建议 LTS）
 - npm 9+
 
-### 4.2 安装依赖 / Install Dependencies
+#### 安装依赖
 
 ```powershell
 npm install
 ```
 
-### 4.3 启动开发环境 / Start Dev Server
+#### 启动开发环境
 
 ```powershell
 npm run dev
 ```
 
-### 4.4 构建生产版本 / Build for Production
+#### 构建生产版本
 
 ```powershell
 npm run build
 ```
 
-### 4.5 代码检查 / Lint
+#### 代码检查
 
 ```powershell
 npm run lint
 ```
 
-### 4.6 本地预览 / Preview Build
+#### 本地预览
 
 ```powershell
 npm run preview
 ```
 
-## 5. 目录结构 / Project Structure
+### 目录结构
 
 ```text
 src/
-  app/          # 状态与类型定义 / app state and shared types
-  components/   # 画布与交互组件 / canvas and UI components
-  features/     # 功能模块（如键盘）/ feature modules (e.g. keyboard)
-  layout/       # 布局计算 / layout engine
-  model/        # 树结构操作 / tree operations
-  render/       # 各节点渲染 / node renderers
-  styles/       # 样式 / styles
-  utils/        # 工具函数 / utilities
+  app/          # 状态与类型定义
+  components/   # 画布与交互组件
+  features/     # 功能模块（如键盘）
+  layout/       # 布局计算
+  model/        # 树结构操作
+  render/       # 各节点渲染
+  styles/       # 样式
+  utils/        # 工具函数
 ```
 
-## 6. 数据与导入导出 / Data and I/O
+### 数据与导入导出
 
-- 中文：项目数据以树结构保存，核心类型定义在 `src/app/types.ts`。  
-- EN: Project data is stored as a tree structure; core types are in `src/app/types.ts`.
+项目数据以树结构保存，核心类型定义在 `src/app/types.ts`。
 
-- 中文：可通过下载导出 JSON，并通过加载恢复项目。  
-- EN: You can export JSON via download and restore a project by loading it.
+可通过下载导出 JSON，并通过加载恢复项目。
 
-## 7. 开发说明 / Development Notes
+### 开发说明
 
-- 中文：当前分支主入口为 `src/main.tsx`，应用壳在 `src/App.tsx`。  
-- EN: Entry point is `src/main.tsx`, and the app shell is `src/App.tsx`.
+当前应用入口为 `src/main.tsx`，应用壳在 `src/App.tsx`。
 
-- 中文：主要树操作逻辑在 `src/model/treeOps.ts`。  
-- EN: Core tree operation logic is in `src/model/treeOps.ts`.
+主要树操作逻辑在 `src/model/treeOps.ts`。
 
-## 8. 许可证 / License
+### 许可证
 
-暂未声明开源许可证。  
+暂未声明开源许可证。
+
+---
+
+## English
+
+### Overview
+
+This is a visual Nassi-Shneiderman Diagram (NSD) editor built with React + TypeScript + Vite.
+
+It is designed for creating, editing, and reordering structured flow nodes (Process / If / Case / Loop), with tree-based data editing, canvas interaction, and JSON import/export.
+
+### Features
+
+- Add, insert, delete, and move nodes up/down
+- Supports If branches, Case multi-branches, and While / Do-While loops
+- Drag-and-drop reordering (intra-container nodes and result branches)
+- Editable node text and condition text
+- Project JSON download and load
+
+### Tech Stack
+
+- React 19
+- TypeScript 5
+- Vite 7
+- ESLint 9
+
+### Quick Start
+
+#### Prerequisites
+
+- Node.js 18+ (LTS recommended)
+- npm 9+
+
+#### Install Dependencies
+
+```powershell
+npm install
+```
+
+#### Start Dev Server
+
+```powershell
+npm run dev
+```
+
+#### Build for Production
+
+```powershell
+npm run build
+```
+
+#### Lint
+
+```powershell
+npm run lint
+```
+
+#### Preview Build
+
+```powershell
+npm run preview
+```
+
+### Project Structure
+
+```text
+src/
+  app/          # app state and shared types
+  components/   # canvas and UI components
+  features/     # feature modules (e.g. keyboard)
+  layout/       # layout engine
+  model/        # tree operations
+  render/       # node renderers
+  styles/       # styles
+  utils/        # utilities
+```
+
+### Data and I/O
+
+Project data is stored as a tree structure, and core types are defined in `src/app/types.ts`.
+
+You can export JSON via download and restore a project by loading it.
+
+### Development Notes
+
+The app entry is `src/main.tsx`, and the app shell is `src/App.tsx`.
+
+Core tree operation logic is in `src/model/treeOps.ts`.
+
+### License
+
 No open-source license has been declared yet.
