@@ -149,6 +149,10 @@ export function useAppState() {
         setHistory((prev) => commitHistory(prev, createInitialState()))
     }
 
+    function replaceState(next: AppState) {
+        setHistory((prev) => commitHistory(prev, next))
+    }
+
     function undo() {
         setHistory((prev) => {
             const previous = prev.past.at(-1)
@@ -701,6 +705,7 @@ export function useAppState() {
         undo,
         redo,
         reset,
+        replaceState,
         updateStyle,
 
         addProcessAfterEnd,

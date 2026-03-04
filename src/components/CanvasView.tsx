@@ -1,5 +1,5 @@
 // FILE: src/components/CanvasView.tsx
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, RefObject } from 'react'
 import type { AppState, CasePartKey, DragContainerKey, DragMoveRequest, IfPartKey } from '../app/types'
 import { layoutRoot } from '../layout/layoutEngine'
@@ -9,6 +9,8 @@ import { RenderNode } from '../render/renderNode'
 type CanvasViewProps = Readonly<{
     state: AppState
     svgRef: RefObject<SVGSVGElement | null>
+
+    onCanvasSize?: (size: Readonly<{ width: number; height: number }>) => void
 
     onProcessSelect: (nodeId: string) => void
     onProcessDoubleClick: (nodeId: string) => void
@@ -89,12 +91,36 @@ type DragIndex = Readonly<{
     owners: ReadonlyMap<string, AbsOwnerBox>
 }>
 
+/**
+ * 命中范围策略：
+ * - Sequence 容器：X 基本严格，Y 给一点点 margin 方便“拖到顶部/底部也能插入”
+ * - If/Case owner：同理，X 严格，Y 给一点点 margin
+ * - Case 列重排：只允许在列内（或左右外边缘少量 margin）计算落点；中间以“半区规则”确定 before/after
+ */
+const CONTAINER_HIT_MARGIN_X = 6
+const CONTAINER_HIT_MARGIN_Y = 24
+
+const OWNER_HIT_MARGIN_X = 6
+const OWNER_HIT_MARGIN_Y = 24
+
+const CASE_EDGE_MARGIN_X = 24
+
 function ownerKeyOfContainer(container: DragContainerKey): string {
     return container.kind === 'root' ? 'root' : container.nodeId
 }
 
-function isPointInRect(p: Point, rect: Readonly<{ x: number; y: number; w: number; h: number }>): boolean {
-    return p.x >= rect.x && p.x <= rect.x + rect.w && p.y >= rect.y && p.y <= rect.y + rect.h
+function isPointInRectWithMarginXY(
+    p: Point,
+    rect: Readonly<{ x: number; y: number; w: number; h: number }>,
+    marginX: number,
+    marginY: number,
+): boolean {
+    return (
+        p.x >= rect.x - marginX &&
+        p.x <= rect.x + rect.w + marginX &&
+        p.y >= rect.y - marginY &&
+        p.y <= rect.y + rect.h + marginY
+    )
 }
 
 function pickDeepestContainer(containers: ReadonlyArray<ContainerInfo>, p: Point): ContainerInfo | null {
@@ -103,7 +129,14 @@ function pickDeepestContainer(containers: ReadonlyArray<ContainerInfo>, p: Point
 
     for (const c of containers) {
         if (c.width <= 0 || c.height <= 0) continue
-        if (!isPointInRect(p, { x: c.absX, y: c.absY, w: c.width, h: c.height })) continue
+
+        const hit = isPointInRectWithMarginXY(
+            p,
+            { x: c.absX, y: c.absY, w: c.width, h: c.height },
+            CONTAINER_HIT_MARGIN_X,
+            CONTAINER_HIT_MARGIN_Y,
+        )
+        if (!hit) continue
 
         const area = c.width * c.height
         if (area < bestArea) {
@@ -133,6 +166,14 @@ function clampInt(value: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, v))
 }
 
+function findHoveredColIndexStrict(cols: ReadonlyArray<Readonly<{ x: number; w: number }>>, x: number): number {
+    for (let i = 0; i < cols.length; i += 1) {
+        const c = cols[i]
+        if (x >= c.x && x <= c.x + c.w) return i
+    }
+    return -1
+}
+
 function computeInsertIndexByX(cols: ReadonlyArray<Readonly<{ x: number; w: number }>>, x: number): number {
     if (cols.length <= 0) return 0
     const mids = cols.map((c) => c.x + c.w / 2)
@@ -142,14 +183,6 @@ function computeInsertIndexByX(cols: ReadonlyArray<Readonly<{ x: number; w: numb
     }
 
     return cols.length
-}
-
-function findHoveredColIndex(cols: ReadonlyArray<Readonly<{ x: number; w: number }>>, x: number): number {
-    for (let i = 0; i < cols.length; i += 1) {
-        const c = cols[i]
-        if (x >= c.x && x <= c.x + c.w) return i
-    }
-    return -1
 }
 
 function buildDragIndex(rootBox: LayoutBox): DragIndex {
@@ -338,6 +371,7 @@ export function CanvasView(props: CanvasViewProps) {
     const {
         state,
         svgRef,
+        onCanvasSize,
         onProcessSelect,
         onProcessDoubleClick,
         onIfHeaderSelect,
@@ -368,18 +402,20 @@ export function CanvasView(props: CanvasViewProps) {
     const rootBox = useMemo(() => layoutRoot(state.root, state.style), [state.root, state.style])
     const dragIndex = useMemo(() => buildDragIndex(rootBox), [rootBox])
 
-    const leftPad = 20
-
+    const baseLeftPad = 20
     const menuTopSafe = 90
     const menuRightSafe = 220
     const menuBottomSafe = 80
 
-    const topPad = menuTopSafe
-    const rightPad = menuRightSafe
-    const bottomPad = menuBottomSafe
+    const padX = Math.max(baseLeftPad, menuRightSafe)
+    const padY = Math.max(menuTopSafe, menuBottomSafe)
 
-    const w = Math.ceil(rootBox.width + leftPad + rightPad)
-    const h = Math.ceil(rootBox.height + topPad + bottomPad)
+    const w = Math.ceil(rootBox.width + padX * 2)
+    const h = Math.ceil(rootBox.height + padY * 2)
+
+    useEffect(() => {
+        onCanvasSize?.({ width: w, height: h })
+    }, [h, onCanvasSize, w])
 
     const [pending, setPending] = useState<PendingDrag | null>(null)
     const [dragging, setDragging] = useState<ActiveDrag | null>(null)
@@ -402,7 +438,7 @@ export function CanvasView(props: CanvasViewProps) {
         const svg = svgRef.current
         if (!svg) return null
         const p = clientToSvgPoint(svg, event.clientX, event.clientY)
-        return { x: p.x - leftPad, y: p.y - topPad }
+        return { x: p.x - padX, y: p.y - padY }
     }
 
     function tryHideOriginalNode(nodeId: string) {
@@ -595,7 +631,6 @@ export function CanvasView(props: CanvasViewProps) {
             const threshold = 5
             if (dist2 < threshold * threshold) return
 
-            // 只有真正开始拖拽时，才阻止默认行为 + 捕获指针
             event.preventDefault()
             try {
                 svgRef.current?.setPointerCapture(event.pointerId)
@@ -622,7 +657,6 @@ export function CanvasView(props: CanvasViewProps) {
 
         if (!dragging) return
 
-        // 拖拽进行中：持续阻止默认行为（防止浏览器选择/拖拽文本等）
         event.preventDefault()
 
         setDragging((prev) => {
@@ -655,7 +689,8 @@ export function CanvasView(props: CanvasViewProps) {
         if (owner.box.node.type !== 'if') return
 
         const rect = { x: owner.absX, y: owner.absY, w: owner.width, h: owner.height }
-        if (!isPointInRect(p, rect)) return
+        const hit = isPointInRectWithMarginXY(p, rect, OWNER_HIT_MARGIN_X, OWNER_HIT_MARGIN_Y)
+        if (!hit) return
 
         const split = owner.absX + Math.max(0, Math.ceil(owner.box.children[1]?.x ?? owner.box.width / 2))
         const toBranch: 'true' | 'false' = p.x < split ? 'true' : 'false'
@@ -669,27 +704,47 @@ export function CanvasView(props: CanvasViewProps) {
         })
     }
 
+    function computeCaseResultInsertIndexByX(
+        cols: ReadonlyArray<Readonly<{ x: number; w: number }>>,
+        x: number,
+    ): number | null {
+        if (cols.length <= 1) return null
+
+        const leftEdge = cols[0]?.x ?? 0
+        const last = cols.at(-1)
+        const rightEdge = last ? last.x + last.w : leftEdge
+
+        if (x < leftEdge - CASE_EDGE_MARGIN_X || x > rightEdge + CASE_EDGE_MARGIN_X) return null
+        if (x <= leftEdge) return 0
+        if (x >= rightEdge) return cols.length
+
+        const hovered = findHoveredColIndexStrict(cols, x)
+        if (hovered < 0) return computeInsertIndexByX(cols, x)
+
+        const c = cols[hovered]
+        const center = c.x + c.w / 2
+        return x < center ? hovered : hovered + 1
+    }
+
     function finishCaseResultDrag(d: Extract<ActiveDrag, { kind: 'caseResult' }>, p: Point) {
         const owner = dragIndex.owners.get(d.caseId)
         if (!owner) return
         if (owner.box.node.type !== 'case') return
 
         const rect = { x: owner.absX, y: owner.absY, w: owner.width, h: owner.height }
-        if (!isPointInRect(p, rect)) return
+        const hit = isPointInRectWithMarginXY(p, rect, OWNER_HIT_MARGIN_X, OWNER_HIT_MARGIN_Y)
+        if (!hit) return
 
         const cols = owner.box.children.map((b) => ({
             x: owner.absX + b.x,
             w: b.width,
         }))
 
-        const hovered = findHoveredColIndex(cols, p.x)
-        if (hovered < 0) return
-        if (hovered === d.fromBranchIndex) return
+        const rawToIndex = computeCaseResultInsertIndexByX(cols, p.x)
+        if (rawToIndex === null) return
 
-        const toIndex = clampInt(computeInsertIndexByX(cols, p.x), 0, cols.length)
-        if (toIndex === d.fromBranchIndex || toIndex === d.fromBranchIndex + 1) {
-            return
-        }
+        const toIndex = clampInt(rawToIndex, 0, cols.length)
+        if (toIndex === d.fromBranchIndex || toIndex === d.fromBranchIndex + 1) return
 
         onMoveByDrag({
             kind: 'caseResult',
@@ -701,7 +756,6 @@ export function CanvasView(props: CanvasViewProps) {
 
     function handlePointerUpCapture(event: ReactPointerEvent<SVGSVGElement>) {
         if (pending?.pointerId === event.pointerId) {
-            // 这是一次“点击”，不要阻止 click 冒泡
             setPending(null)
             return
         }
@@ -754,6 +808,13 @@ export function CanvasView(props: CanvasViewProps) {
             width={w}
             height={h}
             viewBox={`0 0 ${w} ${h}`}
+            style={{
+                position: 'absolute',
+                left: '50%',
+                top: '50%',
+                transform: 'translate(-50%, -50%)',
+                display: 'block',
+            }}
             onPointerDownCapture={handlePointerDownCapture}
             onPointerMoveCapture={handlePointerMoveCapture}
             onPointerUpCapture={handlePointerUpCapture}
@@ -762,7 +823,7 @@ export function CanvasView(props: CanvasViewProps) {
         >
             <rect x={0} y={0} width={w} height={h} fill="transparent" onClick={onCanvasBlankClick} />
 
-            <g transform={`translate(${leftPad}, ${topPad})`}>
+            <g transform={`translate(${padX}, ${padY})`}>
                 <RenderNode
                     box={rootBox}
                     style={state.style}

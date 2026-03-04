@@ -18,8 +18,13 @@ type ToolbarProps = Readonly<{
     onDeleteSelected: () => void
 
     onInitialize: () => void
+
     onExportSvg: () => void
     onExportPng: () => void
+
+    onExportJson: () => void
+    onImportJson: () => void
+
 }>
 
 export function Toolbar(props: ToolbarProps) {
@@ -67,6 +72,13 @@ export function Toolbar(props: ToolbarProps) {
             </button>
             <button className="button" onClick={props.onExportPng}>
                 导出 PNG
+            </button>
+
+            <button className="button" onClick={props.onExportJson}>
+                导出JSON
+            </button>
+            <button className="button" onClick={props.onImportJson}>
+                导入JSON
             </button>
         </>
     )

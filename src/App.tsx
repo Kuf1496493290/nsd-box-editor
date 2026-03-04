@@ -1,5 +1,5 @@
 // FILE: src/App.tsx
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import type { CasePartKey, DragMoveRequest, IfPartKey, NsdNode, SelectionTarget, SequenceNode } from './app/types'
 import { canDeleteByTarget } from './app/selection'
 import { useAppState } from './app/state'
@@ -7,8 +7,9 @@ import { Toolbar } from './components/Toolbar'
 import { CanvasView } from './components/CanvasView'
 import { PropertyPanel } from './components/PropertyPanel'
 import { FloatingTextEditor } from './components/FloatingTextEditor'
-import { downloadPng, downloadSvg } from './utils/download'
+import { downloadJson, downloadPng, downloadSvg } from './utils/download'
 import { installKeyboardShortcuts } from './features/keyboard'
+import { buildProjectFile, parseProjectJsonDetailed } from './utils/projectJson'
 
 type EditingKind = 'process' | 'ifCondition' | 'caseCondition' | 'loopCondition' | 'caseBranchLabel'
 
@@ -23,6 +24,8 @@ type InsertOps = Readonly<{
 
     prependToLoopBody: (loopNodeId: string) => void
 }>
+
+type ImportNotice = Readonly<{ kind: 'info' | 'error'; text: string }>
 
 function pushSequenceChildren(stack: NsdNode[], node: Extract<NsdNode, { type: 'sequence' }>) {
     for (let i = node.children.length - 1; i >= 0; i -= 1) {
@@ -135,6 +138,7 @@ export default function App() {
     const {
         state,
         reset,
+        replaceState,
         updateStyle,
 
         addProcessAfterEnd,
@@ -204,6 +208,85 @@ export default function App() {
     } = useAppState()
 
     const svgRef = useRef<SVGSVGElement>(null)
+    const canvasWrapRef = useRef<HTMLDivElement>(null)
+
+    const [canvasSize, setCanvasSize] = useState<Readonly<{ width: number; height: number }>>({ width: 1, height: 1 })
+    const [wrapSize, setWrapSize] = useState<Readonly<{ width: number; height: number }>>({ width: 1, height: 1 })
+
+    const [importNotice, setImportNotice] = useState<ImportNotice | null>(null)
+    const importNoticeTimerRef = useRef<number | null>(null)
+
+    const showImportNotice = useCallback((notice: ImportNotice, timeoutMs = 2000) => {
+        setImportNotice(notice)
+
+        if (importNoticeTimerRef.current !== null) {
+            globalThis.clearTimeout(importNoticeTimerRef.current)
+            importNoticeTimerRef.current = null
+        }
+
+        importNoticeTimerRef.current = globalThis.setTimeout(() => {
+            setImportNotice(null)
+            importNoticeTimerRef.current = null
+        }, Math.max(800, Math.floor(timeoutMs)))
+    }, [])
+
+    useEffect(() => {
+        return () => {
+            if (importNoticeTimerRef.current !== null) {
+                globalThis.clearTimeout(importNoticeTimerRef.current)
+                importNoticeTimerRef.current = null
+            }
+        }
+    }, [])
+
+    const onCanvasSizeChange = useCallback((next: Readonly<{ width: number; height: number }>) => {
+        setCanvasSize((prev) => (prev.width === next.width && prev.height === next.height ? prev : next))
+    }, [])
+
+    useEffect(() => {
+        const el = canvasWrapRef.current
+        if (!el) return
+
+        const ro = new ResizeObserver(() => {
+            setWrapSize({
+                width: Math.max(0, Math.floor(el.clientWidth)),
+                height: Math.max(0, Math.floor(el.clientHeight)),
+            })
+        })
+
+        ro.observe(el)
+        setWrapSize({
+            width: Math.max(0, Math.floor(el.clientWidth)),
+            height: Math.max(0, Math.floor(el.clientHeight)),
+        })
+
+        return () => {
+            ro.disconnect()
+        }
+    }, [])
+
+    const viewportWidth = Math.max(wrapSize.width, canvasSize.width)
+    const viewportHeight = Math.max(wrapSize.height, canvasSize.height)
+
+    useEffect(() => {
+        const el = canvasWrapRef.current
+        if (!el) return
+        if (wrapSize.width <= 0 || wrapSize.height <= 0) return
+
+        const id = requestAnimationFrame(() => {
+            const cw = Math.max(0, Math.floor(el.clientWidth))
+            const ch = Math.max(0, Math.floor(el.clientHeight))
+            if (cw <= 0 || ch <= 0) return
+
+            const vw = Math.max(cw, viewportWidth)
+            const vh = Math.max(ch, viewportHeight)
+
+            el.scrollLeft = Math.max(0, Math.floor((vw - cw) / 2))
+            el.scrollTop = Math.max(0, Math.floor((vh - ch) / 2))
+        })
+
+        return () => cancelAnimationFrame(id)
+    }, [viewportHeight, viewportWidth, wrapSize.height, wrapSize.width])
 
     const selectedNode = useMemo(
         () => findNodeById(state.root, state.selectedNodeId),
@@ -224,6 +307,55 @@ export default function App() {
         setEditingText('')
         setEditingBranchIndex(null)
     }, [])
+
+    const importJsonInputRef = useRef<HTMLInputElement>(null)
+
+    const onExportJson = useCallback(() => {
+        downloadJson(buildProjectFile(state), 'nsd-project.json')
+        showImportNotice({ kind: 'info', text: '已导出JSON：nsd-project.json' }, 1500)
+    }, [showImportNotice, state])
+
+    const onImportJson = useCallback(() => {
+        importJsonInputRef.current?.click()
+    }, [])
+
+    const onImportJsonChange = useCallback(
+        async (event: ChangeEvent<HTMLInputElement>) => {
+            const file = event.target.files?.[0]
+            event.target.value = ''
+            if (!file) return
+
+            let text = ''
+            try {
+                text = await file.text()
+            } catch {
+                showImportNotice({ kind: 'error', text: '导入失败：无法读取文件内容。' }, 2600)
+                return
+            }
+
+            const result = parseProjectJsonDetailed(text)
+            if (!result.ok) {
+                showImportNotice({ kind: 'error', text: result.message }, 3000)
+                return
+            }
+
+            closeEditor()
+
+            const first = result.root.children[0]
+            const selectedNodeId = first ? first.id : null
+            const selectedTarget = selectedNodeId ? ({ kind: 'node', nodeId: selectedNodeId } as const) : null
+
+            replaceState({
+                style: result.style,
+                root: result.root,
+                selectedNodeId,
+                selectedTarget,
+            })
+
+            showImportNotice({ kind: 'info', text: '导入JSON成功。' }, 1600)
+        },
+        [closeEditor, replaceState, showImportNotice],
+    )
 
     const onMoveByDragLocal = useCallback(
         (req: DragMoveRequest) => {
@@ -879,6 +1011,22 @@ export default function App() {
                     onInitialize={onInitialize}
                     onExportSvg={onExportSvg}
                     onExportPng={onExportPng}
+                    onExportJson={onExportJson}
+                    onImportJson={onImportJson}
+                />
+
+                {importNotice ? (
+                    <div className={importNotice.kind === 'error' ? 'importNotice importNotice--error' : 'importNotice'}>
+                        {importNotice.text}
+                    </div>
+                ) : null}
+
+                <input
+                    ref={importJsonInputRef}
+                    type="file"
+                    accept=".json,application/json"
+                    style={{ display: 'none' }}
+                    onChange={onImportJsonChange}
                 />
             </div>
 
@@ -908,36 +1056,46 @@ export default function App() {
                 </div>
             </div>
 
-            <div className="canvasWrap">
-                <CanvasView
-                    state={state}
-                    svgRef={svgRef}
-                    onProcessSelect={onProcessSelect}
-                    onProcessDoubleClick={onProcessDoubleClick}
-                    onIfHeaderSelect={onIfHeaderSelect}
-                    onIfHeaderDoubleClick={onIfHeaderDoubleClick}
-                    onIfPartSelect={onIfPartSelect}
-                    onIfLabelDoubleClick={onIfLabelDoubleClick}
-                    onCaseHeaderSelect={onCaseHeaderSelect}
-                    onCaseHeaderDoubleClick={onCaseHeaderDoubleClick}
-                    onCasePartSelect={onCasePartSelect}
-                    onCaseBranchLabelDoubleClick={onCaseBranchLabelDoubleClick}
-                    onLoopSelect={onLoopSelect}
-                    onLoopConditionDoubleClick={onLoopConditionDoubleClick}
-                    onLoopHoleSelect={onLoopHoleSelect}
-                    onCanvasBlankClick={onCanvasBlankClick}
-                    onInsertProcessAfter={onInsertProcessAfter}
-                    onInsertIfAfter={onInsertIfAfter}
-                    onInsertCaseAfter={onInsertCaseAfter}
-                    onInsertWhileAfter={onInsertWhileAfter}
-                    onInsertDoWhileAfter={onInsertDoWhileAfter}
-                    onMoveProcessUp={onMoveProcessUpLocal}
-                    onMoveProcessDown={onMoveProcessDownLocal}
-                    onDeleteProcess={onDeleteProcessLocal}
-                    onDeleteSelected={onDeleteSelected}
-                    onAddCaseBranch={onAddCaseBranchLocal}
-                    onMoveByDrag={onMoveByDragLocal}
-                />
+            <div className="canvasWrap" ref={canvasWrapRef}>
+                <div
+                    className="canvasViewport"
+                    style={{
+                        position: 'relative',
+                        width: viewportWidth,
+                        height: viewportHeight,
+                    }}
+                >
+                    <CanvasView
+                        state={state}
+                        svgRef={svgRef}
+                        onCanvasSize={onCanvasSizeChange}
+                        onProcessSelect={onProcessSelect}
+                        onProcessDoubleClick={onProcessDoubleClick}
+                        onIfHeaderSelect={onIfHeaderSelect}
+                        onIfHeaderDoubleClick={onIfHeaderDoubleClick}
+                        onIfPartSelect={onIfPartSelect}
+                        onIfLabelDoubleClick={onIfLabelDoubleClick}
+                        onCaseHeaderSelect={onCaseHeaderSelect}
+                        onCaseHeaderDoubleClick={onCaseHeaderDoubleClick}
+                        onCasePartSelect={onCasePartSelect}
+                        onCaseBranchLabelDoubleClick={onCaseBranchLabelDoubleClick}
+                        onLoopSelect={onLoopSelect}
+                        onLoopConditionDoubleClick={onLoopConditionDoubleClick}
+                        onLoopHoleSelect={onLoopHoleSelect}
+                        onCanvasBlankClick={onCanvasBlankClick}
+                        onInsertProcessAfter={onInsertProcessAfter}
+                        onInsertIfAfter={onInsertIfAfter}
+                        onInsertCaseAfter={onInsertCaseAfter}
+                        onInsertWhileAfter={onInsertWhileAfter}
+                        onInsertDoWhileAfter={onInsertDoWhileAfter}
+                        onMoveProcessUp={onMoveProcessUpLocal}
+                        onMoveProcessDown={onMoveProcessDownLocal}
+                        onDeleteProcess={onDeleteProcessLocal}
+                        onDeleteSelected={onDeleteSelected}
+                        onAddCaseBranch={onAddCaseBranchLocal}
+                        onMoveByDrag={onMoveByDragLocal}
+                    />
+                </div>
 
                 <FloatingTextEditor
                     visible={editingNodeId !== null}

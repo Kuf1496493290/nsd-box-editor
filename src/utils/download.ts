@@ -1,3 +1,4 @@
+// FILE: src/utils/download.ts
 export function downloadSvg(svgEl: SVGSVGElement, filename = 'nsd.svg') {
     const serializer = new XMLSerializer()
     const source = serializer.serializeToString(svgEl)
@@ -50,4 +51,17 @@ export async function downloadPng(svgEl: SVGSVGElement, filename = 'nsd.png', sc
     a.href = pngUrl
     a.download = filename
     a.click()
+}
+
+export function downloadJson(data: unknown, filename = 'nsd-project.json') {
+    const text = JSON.stringify(data, null, 2)
+    const blob = new Blob([text], { type: 'application/json;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+
+    URL.revokeObjectURL(url)
 }
