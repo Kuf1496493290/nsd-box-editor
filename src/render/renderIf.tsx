@@ -8,7 +8,6 @@ import {
     dashedPolygonOutline,
     polygonPath,
     renderSelectablePlaceholder,
-    renderSelectionOutline,
     safePad,
 } from './renderCommon'
 
@@ -43,6 +42,13 @@ type RenderIfProps = Readonly<{
     onAddCaseBranch?: (caseId: string) => void
 }>
 
+type Pt = Readonly<{ x: number; y: number }>
+type Tri = readonly [Pt, Pt, Pt]
+
+function toTuplePoints(points: ReadonlyArray<Pt>): ReadonlyArray<readonly [number, number]> {
+    return points.map((p) => [p.x, p.y] as const)
+}
+
 function getIfLabels(node: IfNode): { trueLabel: string; falseLabel: string } {
     if (node.boolLabelMode === 'YN') return { trueLabel: 'Y', falseLabel: 'N' }
     return { trueLabel: 'T', falseLabel: 'F' }
@@ -74,7 +80,74 @@ function diagYOnFalseTriangle(x: number, xRight: number, yTop: number, xSplit: n
     return yTop + yH * t
 }
 
+function triArea2(a: Pt, b: Pt, c: Pt): number {
+    return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+}
+
+function normalize(v: Pt): Pt {
+    const len = Math.hypot(v.x, v.y)
+    if (len <= 1e-9) return { x: 0, y: 0 }
+    return { x: v.x / len, y: v.y / len }
+}
+
+function lineIntersection(p1: Pt, d1: Pt, p2: Pt, d2: Pt): Pt | null {
+    const cross = d1.x * d2.y - d1.y * d2.x
+    if (Math.abs(cross) <= 1e-9) return null
+
+    const dx = p2.x - p1.x
+    const dy = p2.y - p1.y
+    const t = (dx * d2.y - dy * d2.x) / cross
+    return { x: p1.x + d1.x * t, y: p1.y + d1.y * t }
+}
+
+/**
+ * 三角形“严格内缩一圈”（平行内缩）：三条边按内法线平移 inset，再求相交。
+ * 视觉上会像矩形/多边形的虚线一样“缩小一圈”，不会贴边或与边重合。
+ */
+function insetTriangle(tri: Tri, inset: number): Tri {
+    const [a0, b0, c0] = tri
+    const insetSafe = Number.isFinite(inset) ? Math.max(0, inset) : 0
+    if (insetSafe <= 0) return tri
+
+    const area2 = triArea2(a0, b0, c0)
+    if (Math.abs(area2) <= 1e-9) return tri
+
+    const ccw = area2 > 0
+
+    function inwardNormal(p: Pt, q: Pt): Pt {
+        const dx = q.x - p.x
+        const dy = q.y - p.y
+        const n = ccw ? { x: -dy, y: dx } : { x: dy, y: -dx }
+        return normalize(n)
+    }
+
+    const nAB = inwardNormal(a0, b0)
+    const nBC = inwardNormal(b0, c0)
+    const nCA = inwardNormal(c0, a0)
+
+    const aAB: Pt = { x: a0.x + nAB.x * insetSafe, y: a0.y + nAB.y * insetSafe }
+    const bAB: Pt = { x: b0.x + nAB.x * insetSafe, y: b0.y + nAB.y * insetSafe }
+
+    const bBC: Pt = { x: b0.x + nBC.x * insetSafe, y: b0.y + nBC.y * insetSafe }
+    const cBC: Pt = { x: c0.x + nBC.x * insetSafe, y: c0.y + nBC.y * insetSafe }
+
+    const cCA: Pt = { x: c0.x + nCA.x * insetSafe, y: c0.y + nCA.y * insetSafe }
+    const aCA: Pt = { x: a0.x + nCA.x * insetSafe, y: a0.y + nCA.y * insetSafe }
+
+    const dAB: Pt = normalize({ x: bAB.x - aAB.x, y: bAB.y - aAB.y })
+    const dBC: Pt = normalize({ x: cBC.x - bBC.x, y: cBC.y - bBC.y })
+    const dCA: Pt = normalize({ x: aCA.x - cCA.x, y: aCA.y - cCA.y })
+
+    const A = lineIntersection(aAB, dAB, aCA, dCA)
+    const B = lineIntersection(bAB, dAB, bBC, dBC)
+    const C = lineIntersection(cBC, dBC, cCA, dCA)
+
+    if (!A || !B || !C) return tri
+    return [A, B, C] as const
+}
+
 function renderBranchContent(params: Readonly<{
+    ifNodeId: string
     box: LayoutBox
     bodyTopY: number
     trueBranchBox: LayoutBox | null
@@ -82,6 +155,13 @@ function renderBranchContent(params: Readonly<{
     style: StyleConfig
     selectedNodeId: string | null
     selectedTarget: SelectionTarget | null
+    showTruePlaceholder: boolean
+    showFalsePlaceholder: boolean
+    x0: number
+    splitX: number
+    bodyH: number
+    leftW: number
+    rightW: number
     onProcessSelect: (nodeId: string) => void
     onProcessDoubleClick: (nodeId: string) => void
     onIfHeaderSelect: (nodeId: string) => void
@@ -107,6 +187,7 @@ function renderBranchContent(params: Readonly<{
     onAddCaseBranch?: (caseId: string) => void
 }>): ReactNode {
     const {
+        ifNodeId,
         box,
         bodyTopY,
         trueBranchBox,
@@ -114,6 +195,13 @@ function renderBranchContent(params: Readonly<{
         style,
         selectedNodeId,
         selectedTarget,
+        showTruePlaceholder,
+        showFalsePlaceholder,
+        x0,
+        splitX,
+        bodyH,
+        leftW,
+        rightW,
         onProcessSelect,
         onProcessDoubleClick,
         onIfHeaderSelect,
@@ -139,74 +227,112 @@ function renderBranchContent(params: Readonly<{
         onAddCaseBranch,
     } = params
 
-    const bodyH = Math.max(0, box.height - (bodyTopY - box.y))
-    if (bodyH <= 0) return null
+    const contentH = Math.max(0, box.height - (bodyTopY - box.y))
+    if (contentH <= 0) return null
 
     return (
         <g transform={`translate(${box.x}, ${bodyTopY})`}>
-            {trueBranchBox ? (
-                <RenderNode
-                    box={trueBranchBox}
-                    style={style}
-                    selectedNodeId={selectedNodeId}
-                    selectedTarget={selectedTarget}
-                    onProcessSelect={onProcessSelect}
-                    onProcessDoubleClick={onProcessDoubleClick}
-                    onIfHeaderSelect={onIfHeaderSelect}
-                    onIfHeaderDoubleClick={onIfHeaderDoubleClick}
-                    onIfPartSelect={onIfPartSelect}
-                    onIfLabelDoubleClick={onIfLabelDoubleClick}
-                    onCaseHeaderSelect={onCaseHeaderSelect}
-                    onCaseHeaderDoubleClick={onCaseHeaderDoubleClick}
-                    onCasePartSelect={onCasePartSelect}
-                    onCaseBranchLabelDoubleClick={onCaseBranchLabelDoubleClick}
-                    onLoopSelect={onLoopSelect}
-                    onLoopConditionDoubleClick={onLoopConditionDoubleClick}
-                    onLoopHoleSelect={onLoopHoleSelect}
-                    onInsertProcessAfter={onInsertProcessAfter}
-                    onInsertIfAfter={onInsertIfAfter}
-                    onInsertCaseAfter={onInsertCaseAfter}
-                    onInsertWhileAfter={onInsertWhileAfter}
-                    onInsertDoWhileAfter={onInsertDoWhileAfter}
-                    onMoveProcessUp={onMoveProcessUp}
-                    onMoveProcessDown={onMoveProcessDown}
-                    onDeleteProcess={onDeleteProcess}
-                    onDeleteSelected={onDeleteSelected}
-                    onAddCaseBranch={onAddCaseBranch}
-                />
-            ) : null}
+            <g data-drag-if-column-id={ifNodeId} data-drag-if-column-branch="true">
+                {showTruePlaceholder
+                    ? renderSelectablePlaceholder({
+                        x: x0,
+                        y: 0,
+                        w: leftW,
+                        h: bodyH,
+                        selected:
+                            selectedTarget?.kind === 'ifPart' &&
+                            selectedTarget.nodeId === ifNodeId &&
+                            selectedTarget.part === 'trueContainer',
+                        onClick: (event) => {
+                            event.stopPropagation()
+                            onIfPartSelect(ifNodeId, 'trueContainer')
+                        },
+                    })
+                    : null}
 
-            {falseBranchBox ? (
-                <RenderNode
-                    box={falseBranchBox}
-                    style={style}
-                    selectedNodeId={selectedNodeId}
-                    selectedTarget={selectedTarget}
-                    onProcessSelect={onProcessSelect}
-                    onProcessDoubleClick={onProcessDoubleClick}
-                    onIfHeaderSelect={onIfHeaderSelect}
-                    onIfHeaderDoubleClick={onIfHeaderDoubleClick}
-                    onIfPartSelect={onIfPartSelect}
-                    onIfLabelDoubleClick={onIfLabelDoubleClick}
-                    onCaseHeaderSelect={onCaseHeaderSelect}
-                    onCaseHeaderDoubleClick={onCaseHeaderDoubleClick}
-                    onCasePartSelect={onCasePartSelect}
-                    onCaseBranchLabelDoubleClick={onCaseBranchLabelDoubleClick}
-                    onLoopSelect={onLoopSelect}
-                    onLoopConditionDoubleClick={onLoopConditionDoubleClick}
-                    onLoopHoleSelect={onLoopHoleSelect}
-                    onInsertProcessAfter={onInsertProcessAfter}
-                    onInsertIfAfter={onInsertIfAfter}
-                    onInsertCaseAfter={onInsertCaseAfter}
-                    onInsertWhileAfter={onInsertWhileAfter}
-                    onInsertDoWhileAfter={onInsertDoWhileAfter}
-                    onMoveProcessUp={onMoveProcessUp}
-                    onMoveProcessDown={onMoveProcessDown}
-                    onDeleteProcess={onDeleteProcess}
-                    onDeleteSelected={onDeleteSelected}
-                    onAddCaseBranch={onAddCaseBranch}
-                />
-            ) : null}
+                {trueBranchBox ? (
+                    <RenderNode
+                        box={trueBranchBox}
+                        style={style}
+                        selectedNodeId={selectedNodeId}
+                        selectedTarget={selectedTarget}
+                        onProcessSelect={onProcessSelect}
+                        onProcessDoubleClick={onProcessDoubleClick}
+                        onIfHeaderSelect={onIfHeaderSelect}
+                        onIfHeaderDoubleClick={onIfHeaderDoubleClick}
+                        onIfPartSelect={onIfPartSelect}
+                        onIfLabelDoubleClick={onIfLabelDoubleClick}
+                        onCaseHeaderSelect={onCaseHeaderSelect}
+                        onCaseHeaderDoubleClick={onCaseHeaderDoubleClick}
+                        onCasePartSelect={onCasePartSelect}
+                        onCaseBranchLabelDoubleClick={onCaseBranchLabelDoubleClick}
+                        onLoopSelect={onLoopSelect}
+                        onLoopConditionDoubleClick={onLoopConditionDoubleClick}
+                        onLoopHoleSelect={onLoopHoleSelect}
+                        onInsertProcessAfter={onInsertProcessAfter}
+                        onInsertIfAfter={onInsertIfAfter}
+                        onInsertCaseAfter={onInsertCaseAfter}
+                        onInsertWhileAfter={onInsertWhileAfter}
+                        onInsertDoWhileAfter={onInsertDoWhileAfter}
+                        onMoveProcessUp={onMoveProcessUp}
+                        onMoveProcessDown={onMoveProcessDown}
+                        onDeleteProcess={onDeleteProcess}
+                        onDeleteSelected={onDeleteSelected}
+                        onAddCaseBranch={onAddCaseBranch}
+                    />
+                ) : null}
+            </g>
+
+            <g data-drag-if-column-id={ifNodeId} data-drag-if-column-branch="false">
+                {showFalsePlaceholder
+                    ? renderSelectablePlaceholder({
+                        x: splitX,
+                        y: 0,
+                        w: rightW,
+                        h: bodyH,
+                        selected:
+                            selectedTarget?.kind === 'ifPart' &&
+                            selectedTarget.nodeId === ifNodeId &&
+                            selectedTarget.part === 'falseContainer',
+                        onClick: (event) => {
+                            event.stopPropagation()
+                            onIfPartSelect(ifNodeId, 'falseContainer')
+                        },
+                    })
+                    : null}
+
+                {falseBranchBox ? (
+                    <RenderNode
+                        box={falseBranchBox}
+                        style={style}
+                        selectedNodeId={selectedNodeId}
+                        selectedTarget={selectedTarget}
+                        onProcessSelect={onProcessSelect}
+                        onProcessDoubleClick={onProcessDoubleClick}
+                        onIfHeaderSelect={onIfHeaderSelect}
+                        onIfHeaderDoubleClick={onIfHeaderDoubleClick}
+                        onIfPartSelect={onIfPartSelect}
+                        onIfLabelDoubleClick={onIfLabelDoubleClick}
+                        onCaseHeaderSelect={onCaseHeaderSelect}
+                        onCaseHeaderDoubleClick={onCaseHeaderDoubleClick}
+                        onCasePartSelect={onCasePartSelect}
+                        onCaseBranchLabelDoubleClick={onCaseBranchLabelDoubleClick}
+                        onLoopSelect={onLoopSelect}
+                        onLoopConditionDoubleClick={onLoopConditionDoubleClick}
+                        onLoopHoleSelect={onLoopHoleSelect}
+                        onInsertProcessAfter={onInsertProcessAfter}
+                        onInsertIfAfter={onInsertIfAfter}
+                        onInsertCaseAfter={onInsertCaseAfter}
+                        onInsertWhileAfter={onInsertWhileAfter}
+                        onInsertDoWhileAfter={onInsertDoWhileAfter}
+                        onMoveProcessUp={onMoveProcessUp}
+                        onMoveProcessDown={onMoveProcessDown}
+                        onDeleteProcess={onDeleteProcess}
+                        onDeleteSelected={onDeleteSelected}
+                        onAddCaseBranch={onAddCaseBranch}
+                    />
+                ) : null}
+            </g>
         </g>
     )
 }
@@ -246,7 +372,6 @@ export function RenderIf(props: RenderIfProps) {
     if (node.type !== 'if') return null
 
     const ifNode = node
-    const isSelected = selectedNodeId === ifNode.id || selectedTarget?.nodeId === ifNode.id
     const selectedIfPart = getSelectedIfPart(selectedTarget, ifNode.id)
 
     const y = baseBlockHeight(style)
@@ -262,13 +387,13 @@ export function RenderIf(props: RenderIfProps) {
     const rightW = Math.max(0, w - leftW)
     const splitX = x0 + leftW
 
-    const diagLeftTop: readonly [number, number] = [x0, y0]
-    const diagRightTop: readonly [number, number] = [xRight, y0]
-    const bottomSplit: readonly [number, number] = [splitX, y0 + y]
+    const diagLeftTop: Pt = { x: x0, y: y0 }
+    const diagRightTop: Pt = { x: xRight, y: y0 }
+    const bottomSplit: Pt = { x: splitX, y: y0 + y }
 
-    const headerTriangle = [diagLeftTop, diagRightTop, bottomSplit] as const
-    const trueTriangle = [diagLeftTop, bottomSplit, [x0, y0 + y] as const] as const
-    const falseTriangle = [diagRightTop, [xRight, y0 + y] as const, bottomSplit] as const
+    const headerTriangle: ReadonlyArray<Pt> = [diagLeftTop, diagRightTop, bottomSplit]
+    const trueTriangle: Tri = [diagLeftTop, bottomSplit, { x: x0, y: y0 + y }] as const
+    const falseTriangle: Tri = [diagRightTop, { x: xRight, y: y0 + y }, bottomSplit] as const
 
     const { trueLabel, falseLabel } = getIfLabels(ifNode)
 
@@ -319,42 +444,23 @@ export function RenderIf(props: RenderIfProps) {
     const trueTextY = (trueDiagY + bottomY) / 2
     const falseTextY = (falseDiagY + bottomY) / 2
 
+    // 关键：把内缩量调到“约等于线宽”，视觉上会接近其它虚线（约 1px 内缩）
+    const partInset = Math.max(3, Math.ceil(style.lineWidth))
+    const trueTriangleInset = insetTriangle(trueTriangle, partInset)
+    const falseTriangleInset = insetTriangle(falseTriangle, partInset)
+
     return (
         <g>
-            <rect
-                x={x0}
-                y={y0}
-                width={w}
-                height={headerH}
-                fill="white"
-                stroke="black"
-                strokeWidth={style.lineWidth}
-            />
+            <rect x={x0} y={y0} width={w} height={headerH} fill="white" stroke="black" strokeWidth={style.lineWidth} />
 
-            {renderSelectionOutline(isSelected, box)}
+            <line x1={x0} y1={y0} x2={bottomSplit.x} y2={bottomSplit.y} stroke="black" strokeWidth={style.lineWidth} />
+            <line x1={xRight} y1={y0} x2={bottomSplit.x} y2={bottomSplit.y} stroke="black" strokeWidth={style.lineWidth} />
 
-            <line x1={x0} y1={y0} x2={bottomSplit[0]} y2={bottomSplit[1]} stroke="black" strokeWidth={style.lineWidth} />
-            <line
-                x1={xRight}
-                y1={y0}
-                x2={bottomSplit[0]}
-                y2={bottomSplit[1]}
-                stroke="black"
-                strokeWidth={style.lineWidth}
-            />
+            {bodyH > 0 ? <line x1={x0} y1={bodyTopY} x2={xRight} y2={bodyTopY} stroke="black" strokeWidth={style.lineWidth} /> : null}
 
-            {bodyH > 0 ? (
-                <line x1={x0} y1={bodyTopY} x2={xRight} y2={bodyTopY} stroke="black" strokeWidth={style.lineWidth} />
-            ) : null}
-
-            <g
-                onClick={handleHeaderClick}
-                onDoubleClick={handleHeaderDoubleClick}
-                style={{ cursor: 'pointer' }}
-                aria-label="编辑 IF 条件"
-            >
-                <path d={polygonPath(headerTriangle)} fill="transparent" />
-                {selectedIfPart === 'header' ? dashedPolygonOutline(headerTriangle) : null}
+            <g onClick={handleHeaderClick} onDoubleClick={handleHeaderDoubleClick} style={{ cursor: 'pointer' }} aria-label="编辑 IF 条件">
+                <path d={polygonPath(toTuplePoints(headerTriangle))} fill="transparent" />
+                {selectedIfPart === 'header' ? dashedPolygonOutline(toTuplePoints(headerTriangle)) : null}
 
                 <text
                     x={x0 + w / 2}
@@ -384,8 +490,8 @@ export function RenderIf(props: RenderIfProps) {
                 style={{ cursor: 'pointer' }}
                 aria-label="选择 IF trueLabel"
             >
-                <path d={polygonPath(trueTriangle)} fill="transparent" />
-                {selectedIfPart === 'trueLabel' ? dashedPolygonOutline(trueTriangle) : null}
+                <path d={polygonPath(toTuplePoints(trueTriangle))} fill="transparent" />
+                {selectedIfPart === 'trueLabel' ? dashedPolygonOutline(toTuplePoints(trueTriangleInset)) : null}
 
                 <text
                     x={trueTextX}
@@ -415,8 +521,8 @@ export function RenderIf(props: RenderIfProps) {
                 style={{ cursor: 'pointer' }}
                 aria-label="选择 IF falseLabel"
             >
-                <path d={polygonPath(falseTriangle)} fill="transparent" />
-                {selectedIfPart === 'falseLabel' ? dashedPolygonOutline(falseTriangle) : null}
+                <path d={polygonPath(toTuplePoints(falseTriangle))} fill="transparent" />
+                {selectedIfPart === 'falseLabel' ? dashedPolygonOutline(toTuplePoints(falseTriangleInset)) : null}
 
                 <text
                     x={falseTextX}
@@ -432,35 +538,8 @@ export function RenderIf(props: RenderIfProps) {
                 </text>
             </g>
 
-            {showTruePlaceholder
-                ? renderSelectablePlaceholder({
-                    x: x0,
-                    y: bodyTopY,
-                    w: leftW,
-                    h: bodyH,
-                    selected: selectedIfPart === 'trueContainer',
-                    onClick: (event) => {
-                        event.stopPropagation()
-                        onIfPartSelect(ifNode.id, 'trueContainer')
-                    },
-                })
-                : null}
-
-            {showFalsePlaceholder
-                ? renderSelectablePlaceholder({
-                    x: splitX,
-                    y: bodyTopY,
-                    w: rightW,
-                    h: bodyH,
-                    selected: selectedIfPart === 'falseContainer',
-                    onClick: (event) => {
-                        event.stopPropagation()
-                        onIfPartSelect(ifNode.id, 'falseContainer')
-                    },
-                })
-                : null}
-
             {renderBranchContent({
+                ifNodeId: ifNode.id,
                 box,
                 bodyTopY,
                 trueBranchBox,
@@ -468,6 +547,13 @@ export function RenderIf(props: RenderIfProps) {
                 style,
                 selectedNodeId,
                 selectedTarget,
+                showTruePlaceholder,
+                showFalsePlaceholder,
+                x0,
+                splitX,
+                bodyH,
+                leftW,
+                rightW,
                 onProcessSelect,
                 onProcessDoubleClick,
                 onIfHeaderSelect,

@@ -1167,11 +1167,13 @@ function moveIfResult(root: SequenceNode, req: Extract<DragMoveRequest, { kind: 
         }
     })
 
+    const nextSelectedPart: 'trueLabel' | 'falseLabel' = req.toBranch === 'true' ? 'trueLabel' : 'falseLabel'
+
     return {
         root: nextRoot,
         changed,
         selectedNodeId: changed ? req.nodeId : undefined,
-        selectedTarget: changed ? { kind: 'node', nodeId: req.nodeId } : undefined,
+        selectedTarget: changed ? { kind: 'ifPart', nodeId: req.nodeId, part: nextSelectedPart } : undefined,
     }
 }
 
@@ -1320,7 +1322,6 @@ export function updateLoopConditionTextInRoot(root: SequenceNode, nodeId: string
         selectedNodeId: nodeId,
     }
 }
-
 
 export function updateCaseBranchLabelInRoot(
     root: SequenceNode,

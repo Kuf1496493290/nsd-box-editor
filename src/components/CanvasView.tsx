@@ -9,11 +9,12 @@ import {
     type PointerEvent as ReactPointerEvent,
     type RefObject,
 } from 'react'
-import type { AppState, CasePartKey, DragContainerKey, DragMoveRequest, IfPartKey } from '../app/types'
+import type { AppState, CasePartKey, DragContainerKey, DragMoveRequest, IfPartKey, SelectionTarget } from '../app/types'
 import { canDeleteByTarget } from '../app/selection'
 import { layoutRoot } from '../layout/layoutEngine'
 import type { LayoutBox } from '../layout/layoutTypes'
 import { RenderNode } from '../render/renderNode'
+import { renderSelectionOutline } from '../render/renderCommon'
 import { NodeActions } from './NodeActions'
 
 type CanvasViewProps = Readonly<{
@@ -21,7 +22,6 @@ type CanvasViewProps = Readonly<{
     svgRef: RefObject<SVGSVGElement | null>
 
     onCanvasSize?: (size: Readonly<{ width: number; height: number }>) => void
-
     onDragStateChange?: (active: boolean) => void
 
     onProcessSelect: (nodeId: string) => void
@@ -218,39 +218,13 @@ type HoverOverlay = Readonly<{
     showAddCaseBranch: boolean
 }>
 
-function findAbsLayoutBoxByNodeId(root: LayoutBox, nodeId: string): Readonly<{ absX: number; absY: number; box: LayoutBox }> | null {
-    const stack: Array<Readonly<{ box: LayoutBox; absX: number; absY: number }>> = [{ box: root, absX: 0, absY: 0 }]
-
-    while (stack.length > 0) {
-        const cur = stack.pop()
-        if (!cur) break
-
-        if (cur.box.node.id === nodeId) {
-            return { absX: cur.absX, absY: cur.absY, box: cur.box }
-        }
-
-        for (let i = cur.box.children.length - 1; i >= 0; i -= 1) {
-            const c = cur.box.children[i]
-            stack.push({ box: c, absX: cur.absX + c.x, absY: cur.absY + c.y })
-        }
-    }
-
-    return null
-}
-
-/**
- * 命中范围策略：
- * - Sequence 容器：X 基本严格，Y 给一点点 margin 方便“拖到顶部/底部也能插入”
- * - If/Case owner：同理，X 严格，Y 给一点点 margin
- * - Case 列重排：只允许在列内（或左右外边缘少量 margin）计算落点；中间以“半区规则”确定 before/after
- */
 const CONTAINER_HIT_MARGIN_X = 6
 const CONTAINER_HIT_MARGIN_Y = 24
 
 const OWNER_HIT_MARGIN_X = 6
 const OWNER_HIT_MARGIN_Y = 24
 
-const CASE_EDGE_MARGIN_X = 24
+const EDGE_MARGIN_X = 24
 
 function clampScale(value: number): number {
     const v = Number.isFinite(value) ? value : 1
@@ -332,6 +306,26 @@ function computeInsertIndexByX(cols: ReadonlyArray<Readonly<{ x: number; w: numb
     }
 
     return cols.length
+}
+
+/** 抽出重复逻辑：列重排的“边界 + 半区规则”插入位计算 */
+function computeReorderInsertIndexByX(cols: ReadonlyArray<Readonly<{ x: number; w: number }>>, x: number, edgeMarginX: number): number | null {
+    if (cols.length <= 1) return null
+
+    const leftEdge = cols[0]?.x ?? 0
+    const last = cols.at(-1)
+    const rightEdge = last ? last.x + last.w : leftEdge
+
+    if (x < leftEdge - edgeMarginX || x > rightEdge + edgeMarginX) return null
+    if (x <= leftEdge) return 0
+    if (x >= rightEdge) return cols.length
+
+    const hovered = findHoveredColIndexStrict(cols, x)
+    if (hovered < 0) return computeInsertIndexByX(cols, x)
+
+    const c = cols[hovered]
+    const center = c.x + c.w / 2
+    return x < center ? hovered : hovered + 1
 }
 
 function buildDragIndex(rootBox: LayoutBox): DragIndex {
@@ -482,6 +476,18 @@ type ActiveDrag =
     ghostBox: LayoutBox
 }>
 
+type AnchorRect = Readonly<{ absX: number; absY: number; width: number; height: number }>
+
+function isWholeNodeSelection(target: SelectionTarget): boolean {
+    if (target.kind === 'node') return true
+    if (target.kind === 'ifPart') return target.part === 'header'
+    return target.kind === 'casePart' && target.part === 'header'
+}
+
+function isWholeNodeType(type: string | undefined): boolean {
+    return type === 'if' || type === 'case' || type === 'loop'
+}
+
 export function CanvasView(props: CanvasViewProps) {
     const {
         state,
@@ -549,39 +555,6 @@ export function CanvasView(props: CanvasViewProps) {
 
     const [openInsertMenuNodeId, setOpenInsertMenuNodeId] = useState<string | null>(null)
 
-    const hoverOverlay = useMemo<HoverOverlay | null>(() => {
-        const target = state.selectedTarget
-        const activeNodeId = target?.nodeId ?? state.selectedNodeId
-        if (!activeNodeId) return null
-
-        if (target?.kind === 'loopPart') return null
-
-        const found = findAbsLayoutBoxByNodeId(rootBox, activeNodeId)
-        if (!found) return null
-
-        const nodeType = found.box.node.type
-        const isInsertableNode = nodeType === 'process' || nodeType === 'if' || nodeType === 'case' || nodeType === 'loop'
-        if (!isInsertableNode) return null
-
-        const insertX = found.absX + found.box.width + 18
-        const insertY = found.absY + found.box.height / 2
-        const deleteX = insertX + 24
-
-        const deleteEnabled = target?.nodeId === activeNodeId ? canDeleteByTarget(target) : state.selectedNodeId === activeNodeId
-
-        // 关键：只有 CASE 条件框（header）选中时才允许“增加分支”
-        const showAddCaseBranch =
-            nodeType === 'case' &&
-            target?.kind === 'casePart' &&
-            target.part === 'header' &&
-            target.nodeId === activeNodeId
-
-        return { nodeId: activeNodeId, insertX, insertY, deleteX, deleteEnabled, showAddCaseBranch }
-    }, [rootBox, state.selectedNodeId, state.selectedTarget])
-
-    const isInsertMenuOpen = hoverOverlay?.nodeId !== undefined && openInsertMenuNodeId === hoverOverlay?.nodeId
-
-    const hiddenElRef = useRef<Readonly<{ nodeId: string; prevOpacity: string }> | null>(null)
     const suppressNextClickRef = useRef(false)
     const suppressClickTimerRef = useRef<number | null>(null)
 
@@ -608,6 +581,9 @@ export function CanvasView(props: CanvasViewProps) {
         }
     }, [])
 
+    const hiddenElRef = useRef<Readonly<{ nodeId: string; prevOpacity: string }> | null>(null)
+    const hiddenIfColumnRef = useRef<Readonly<{ ifId: string; branch: 'true' | 'false'; prevOpacity: string }> | null>(null)
+
     const restoreHiddenIfAny = useCallback(() => {
         const svg = svgRef.current
         const record = hiddenElRef.current
@@ -619,27 +595,96 @@ export function CanvasView(props: CanvasViewProps) {
         hiddenElRef.current = null
     }, [svgRef])
 
+    const restoreHiddenIfColumnIfAny = useCallback(() => {
+        const svg = svgRef.current
+        const record = hiddenIfColumnRef.current
+        if (!svg || !record) return
+
+        const el = svg.querySelector<SVGGElement>(
+            `[data-drag-if-column-id="${record.ifId}"][data-drag-if-column-branch="${record.branch}"]`,
+        )
+        if (el) el.style.opacity = record.prevOpacity
+
+        hiddenIfColumnRef.current = null
+    }, [svgRef])
+
     const handleCanvasBlankClickLocal = useCallback(() => {
         setOpenInsertMenuNodeId(null)
         onCanvasBlankClick()
     }, [onCanvasBlankClick])
 
-    function getContentPoint(event: Readonly<{ clientX: number; clientY: number }>): Point | null {
-        const svg = svgRef.current
-        if (!svg) return null
-        const p = clientToSvgPoint(svg, event.clientX, event.clientY)
+    const getContentPoint = useCallback(
+        (event: Readonly<{ clientX: number; clientY: number }>): Point | null => {
+            const svg = svgRef.current
+            if (!svg) return null
+            const p = clientToSvgPoint(svg, event.clientX, event.clientY)
+            return { x: p.x / diagramScale - padX, y: p.y / diagramScale - padY }
+        },
+        [diagramScale, padX, padY, svgRef],
+    )
 
-        return { x: p.x / diagramScale - padX, y: p.y / diagramScale - padY }
+    const tryHideOriginalNode = useCallback(
+        (nodeId: string) => {
+            const svg = svgRef.current
+            if (!svg) return
+            const el = svg.querySelector<SVGGElement>(`[data-drag-node-id="${nodeId}"]`)
+            if (!el) return
+
+            hiddenElRef.current = { nodeId, prevOpacity: el.style.opacity }
+            el.style.opacity = '0'
+        },
+        [svgRef],
+    )
+
+    const tryHideIfColumn = useCallback(
+        (ifId: string, branch: 'true' | 'false') => {
+            const svg = svgRef.current
+            if (!svg) return
+
+            const el = svg.querySelector<SVGGElement>(
+                `[data-drag-if-column-id="${ifId}"][data-drag-if-column-branch="${branch}"]`,
+            )
+            if (!el) return
+
+            hiddenIfColumnRef.current = { ifId, branch, prevOpacity: el.style.opacity }
+            el.style.opacity = '0'
+        },
+        [svgRef],
+    )
+
+    function selectNodeForPointerDown(nodeId: string) {
+        const loc = dragIndex.nodeLocations.get(nodeId)
+        const t = loc?.box.node.type
+
+        if (t === 'process') {
+            onProcessSelect(nodeId)
+            return
+        }
+
+        if (t === 'loop') {
+            onLoopSelect(nodeId)
+            return
+        }
+
+        if (t === 'if') {
+            onIfHeaderSelect(nodeId)
+            return
+        }
+
+        if (t === 'case') {
+            onCaseHeaderSelect(nodeId)
+            return
+        }
+
+        onProcessSelect(nodeId)
     }
 
-    function tryHideOriginalNode(nodeId: string) {
-        const svg = svgRef.current
-        if (!svg) return
-        const el = svg.querySelector<SVGGElement>(`[data-drag-node-id="${nodeId}"]`)
-        if (!el) return
+    function selectIfResultForPointerDown(ifId: string, branch: 'true' | 'false') {
+        onIfPartSelect(ifId, branch === 'true' ? 'trueLabel' : 'falseLabel')
+    }
 
-        hiddenElRef.current = { nodeId, prevOpacity: el.style.opacity }
-        el.style.opacity = '0'
+    function selectCaseResultForPointerDown(caseId: string, branchIndex: number) {
+        onCasePartSelect(caseId, 'branchLabel', branchIndex)
     }
 
     function startNodeDrag(nodeId: string, p: Point) {
@@ -697,6 +742,8 @@ export function CanvasView(props: CanvasViewProps) {
         const grabOffsetY = p.y - branchAbsY
 
         const ghostBox: LayoutBox = { ...branchBox, x: 0, y: 0, width: fromBranch === 'true' ? leftW : ifBox.width - leftW }
+
+        tryHideIfColumn(ifId, fromBranch)
         armSuppressNextClick()
 
         setDragging({
@@ -743,41 +790,6 @@ export function CanvasView(props: CanvasViewProps) {
         })
     }
 
-    function selectNodeForPointerDown(nodeId: string) {
-        const loc = dragIndex.nodeLocations.get(nodeId)
-        const t = loc?.box.node.type
-
-        if (t === 'process') {
-            onProcessSelect(nodeId)
-            return
-        }
-
-        if (t === 'loop') {
-            onLoopSelect(nodeId)
-            return
-        }
-
-        if (t === 'if') {
-            onIfHeaderSelect(nodeId)
-            return
-        }
-
-        if (t === 'case') {
-            onCaseHeaderSelect(nodeId)
-            return
-        }
-
-        onProcessSelect(nodeId)
-    }
-
-    function selectIfResultForPointerDown(ifId: string, branch: 'true' | 'false') {
-        onIfPartSelect(ifId, branch === 'true' ? 'trueLabel' : 'falseLabel')
-    }
-
-    function selectCaseResultForPointerDown(caseId: string, branchIndex: number) {
-        onCasePartSelect(caseId, 'branchLabel', branchIndex)
-    }
-
     function tryStartPendingIfResult(event: ReactPointerEvent<SVGSVGElement>, target: Element): boolean {
         const ifEl = target.closest<SVGGElement>('[data-drag-if-id][data-drag-if-branch]')
         if (!ifEl) return false
@@ -785,6 +797,7 @@ export function CanvasView(props: CanvasViewProps) {
         const ifId = ifEl.dataset.dragIfId
         const branch = ifEl.dataset.dragIfBranch
         if (!ifId || (branch !== 'true' && branch !== 'false')) return false
+
         selectIfResultForPointerDown(ifId, branch)
         setPending({
             kind: 'ifResult',
@@ -806,6 +819,7 @@ export function CanvasView(props: CanvasViewProps) {
         const idxRaw = caseEl.dataset.dragCaseBranchIndex
         const idx = idxRaw ? Number(idxRaw) : Number.NaN
         if (!caseId || !Number.isFinite(idx)) return false
+
         selectCaseResultForPointerDown(caseId, Math.max(0, Math.floor(idx)))
         setPending({
             kind: 'caseResult',
@@ -823,6 +837,7 @@ export function CanvasView(props: CanvasViewProps) {
         const dragNode = target.closest<SVGGElement>('[data-drag-node-id]')
         const nodeId = dragNode?.dataset.dragNodeId
         if (!nodeId) return
+
         selectNodeForPointerDown(nodeId)
         setPending({
             kind: 'node',
@@ -837,12 +852,8 @@ export function CanvasView(props: CanvasViewProps) {
         if (event.button !== 0) return
         if (dragging) return
 
-        const svg = svgRef.current
-        if (!svg) return
-
         const target = event.target as Element | null
         if (!target) return
-
         if (target.closest('[data-no-drag="1"]')) return
 
         if (tryStartPendingIfResult(event, target)) return
@@ -890,11 +901,7 @@ export function CanvasView(props: CanvasViewProps) {
         if (!dragging) return
 
         event.preventDefault()
-
-        setDragging((prev) => {
-            if (!prev) return prev
-            return { ...prev, pointerX: p.x, pointerY: p.y } as ActiveDrag
-        })
+        setDragging((prev) => (prev ? ({ ...prev, pointerX: p.x, pointerY: p.y } as ActiveDrag) : prev))
     }
 
     function finishNodeDrag(d: Extract<ActiveDrag, { kind: 'node' }>, p: Point) {
@@ -905,56 +912,46 @@ export function CanvasView(props: CanvasViewProps) {
         if (ownerKeyOfContainer(to) !== d.fromOwnerKey) return
 
         const toIndex = computeInsertIndexByY(targetContainer, p)
-
         onMoveByDrag({ kind: 'node', nodeId: d.nodeId, from: d.from, to, toIndex })
     }
 
     function finishIfResultDrag(d: Extract<ActiveDrag, { kind: 'ifResult' }>, p: Point) {
         const owner = dragIndex.owners.get(d.ifId)
-        if (!owner) return
-        if (owner.box.node.type !== 'if') return
+        if (!owner || owner.box.node.type !== 'if') return
 
         const rect = { x: owner.absX, y: owner.absY, w: owner.width, h: owner.height }
-        const hit = isPointInRectWithMarginXY(p, rect, OWNER_HIT_MARGIN_X, OWNER_HIT_MARGIN_Y)
-        if (!hit) return
+        if (!isPointInRectWithMarginXY(p, rect, OWNER_HIT_MARGIN_X, OWNER_HIT_MARGIN_Y)) return
 
-        const split = owner.absX + Math.max(0, Math.ceil(owner.box.children[1]?.x ?? owner.box.width / 2))
-        const toBranch: 'true' | 'false' = p.x < split ? 'true' : 'false'
-        if (toBranch === d.fromBranch) return
+        const ifBox = owner.box
+        const leftW = Math.max(0, Math.ceil(ifBox.children[1]?.x ?? ifBox.width / 2))
+        const rightW = Math.max(0, ifBox.width - leftW)
 
+        const cols = [
+            { x: owner.absX, w: leftW },
+            { x: owner.absX + leftW, w: rightW },
+        ] as const
+
+        const rawToIndex = computeReorderInsertIndexByX(cols, p.x, EDGE_MARGIN_X)
+        if (rawToIndex === null) return
+
+        const fromIndex = d.fromBranch === 'true' ? 0 : 1
+        const toIndex = clampInt(rawToIndex, 0, 2)
+
+        if (toIndex === fromIndex || toIndex === fromIndex + 1) return
+
+        const toBranch: 'true' | 'false' = d.fromBranch === 'true' ? 'false' : 'true'
         onMoveByDrag({ kind: 'ifResult', nodeId: d.ifId, fromBranch: d.fromBranch, toBranch })
-    }
-
-    function computeCaseResultInsertIndexByX(cols: ReadonlyArray<Readonly<{ x: number; w: number }>>, x: number): number | null {
-        if (cols.length <= 1) return null
-
-        const leftEdge = cols[0]?.x ?? 0
-        const last = cols.at(-1)
-        const rightEdge = last ? last.x + last.w : leftEdge
-
-        if (x < leftEdge - CASE_EDGE_MARGIN_X || x > rightEdge + CASE_EDGE_MARGIN_X) return null
-        if (x <= leftEdge) return 0
-        if (x >= rightEdge) return cols.length
-
-        const hovered = findHoveredColIndexStrict(cols, x)
-        if (hovered < 0) return computeInsertIndexByX(cols, x)
-
-        const c = cols[hovered]
-        const center = c.x + c.w / 2
-        return x < center ? hovered : hovered + 1
     }
 
     function finishCaseResultDrag(d: Extract<ActiveDrag, { kind: 'caseResult' }>, p: Point) {
         const owner = dragIndex.owners.get(d.caseId)
-        if (!owner) return
-        if (owner.box.node.type !== 'case') return
+        if (!owner || owner.box.node.type !== 'case') return
 
         const rect = { x: owner.absX, y: owner.absY, w: owner.width, h: owner.height }
-        const hit = isPointInRectWithMarginXY(p, rect, OWNER_HIT_MARGIN_X, OWNER_HIT_MARGIN_Y)
-        if (!hit) return
+        if (!isPointInRectWithMarginXY(p, rect, OWNER_HIT_MARGIN_X, OWNER_HIT_MARGIN_Y)) return
 
         const cols = owner.box.children.map((b) => ({ x: owner.absX + b.x, w: b.width }))
-        const rawToIndex = computeCaseResultInsertIndexByX(cols, p.x)
+        const rawToIndex = computeReorderInsertIndexByX(cols, p.x, EDGE_MARGIN_X)
         if (rawToIndex === null) return
 
         const toIndex = clampInt(rawToIndex, 0, cols.length)
@@ -973,6 +970,7 @@ export function CanvasView(props: CanvasViewProps) {
 
         const p = getContentPoint(event)
         restoreHiddenIfAny()
+        restoreHiddenIfColumnIfAny()
 
         const current = dragging
         setDragging(null)
@@ -993,12 +991,11 @@ export function CanvasView(props: CanvasViewProps) {
     }
 
     function handlePointerCancelCapture(event: ReactPointerEvent<SVGSVGElement>) {
-        if (pending?.pointerId === event.pointerId) {
-            setPending(null)
-        }
+        if (pending?.pointerId === event.pointerId) setPending(null)
 
         if (dragging) {
             restoreHiddenIfAny()
+            restoreHiddenIfColumnIfAny()
             setDragging(null)
         }
     }
@@ -1015,6 +1012,105 @@ export function CanvasView(props: CanvasViewProps) {
         event.stopPropagation()
         event.preventDefault()
     }
+
+    const resolveCaseBranchContainerAnchor = useCallback(
+        (nodeId: string, target: SelectionTarget | null): AnchorRect | null => {
+            if (target?.kind !== 'casePart' || target.nodeId !== nodeId || target.part !== 'branchContainer') return null
+
+            const owner = dragIndex.owners.get(nodeId)
+            if (owner?.box.node.type !== 'case') return null
+
+            const b = owner.box.children[target.branchIndex]
+            if (!b) return null
+
+            return { absX: owner.absX + b.x, absY: owner.absY + b.y, width: b.width, height: b.height }
+        },
+        [dragIndex.owners],
+    )
+
+    const resolveLoopHoleAnchor = useCallback(
+        (nodeId: string, target: SelectionTarget | null): AnchorRect | null => {
+            if (target?.kind !== 'loopPart' || target.nodeId !== nodeId || target.part !== 'hole') return null
+
+            const loc = dragIndex.nodeLocations.get(nodeId)
+            if (loc?.box.node.type !== 'loop') return null
+
+            const body = loc.box.children[0]
+            if (!body) return null
+
+            return { absX: loc.absX + body.x, absY: loc.absY + body.y, width: body.width, height: body.height }
+        },
+        [dragIndex.nodeLocations],
+    )
+
+    const resolveDefaultAnchor = useCallback(
+        (nodeId: string): AnchorRect | null => {
+            const loc = dragIndex.nodeLocations.get(nodeId)
+            if (!loc) return null
+            return { absX: loc.absX, absY: loc.absY, width: loc.width, height: loc.height }
+        },
+        [dragIndex.nodeLocations],
+    )
+
+    const resolveAnchorRect = useCallback(
+        (nodeId: string, target: SelectionTarget | null): AnchorRect | null => {
+            return (
+                resolveCaseBranchContainerAnchor(nodeId, target) ??
+                resolveLoopHoleAnchor(nodeId, target) ??
+                resolveDefaultAnchor(nodeId)
+            )
+        },
+        [resolveCaseBranchContainerAnchor, resolveDefaultAnchor, resolveLoopHoleAnchor],
+    )
+
+    const hoverOverlay = useMemo<HoverOverlay | null>(() => {
+        const target = state.selectedTarget
+        const activeNodeId = target?.nodeId ?? state.selectedNodeId
+        if (!activeNodeId) return null
+
+        const loc = dragIndex.nodeLocations.get(activeNodeId)
+        const nodeType = loc?.box.node.type
+        const isInsertableNode = nodeType === 'process' || nodeType === 'if' || nodeType === 'case' || nodeType === 'loop'
+        if (!isInsertableNode) return null
+
+        const anchor = resolveAnchorRect(activeNodeId, target)
+        if (!anchor) return null
+
+        const insertX = anchor.absX + anchor.width + 18
+        const insertY = anchor.absY + anchor.height / 2
+        const deleteX = insertX + 24
+
+        const deleteEnabled = target?.nodeId === activeNodeId ? canDeleteByTarget(target) : state.selectedNodeId === activeNodeId
+
+        const showAddCaseBranch =
+            nodeType === 'case' &&
+            target?.kind === 'casePart' &&
+            target.part === 'header' &&
+            target.nodeId === activeNodeId
+
+        return { nodeId: activeNodeId, insertX, insertY, deleteX, deleteEnabled, showAddCaseBranch }
+    }, [dragIndex.nodeLocations, resolveAnchorRect, state.selectedNodeId, state.selectedTarget])
+
+    const isInsertMenuOpen = hoverOverlay?.nodeId !== undefined && openInsertMenuNodeId === hoverOverlay?.nodeId
+
+    const topSelectionBox = useMemo<LayoutBox | null>(() => {
+        const t = state.selectedTarget
+        if (!t) return null
+        if (!isWholeNodeSelection(t)) return null
+
+        const loc = dragIndex.nodeLocations.get(t.nodeId)
+        const nodeType = loc?.box.node.type
+        if (!isWholeNodeType(nodeType)) return null
+        if (!loc) return null
+
+        return {
+            ...loc.box,
+            x: loc.absX,
+            y: loc.absY,
+            width: loc.width,
+            height: loc.height,
+        }
+    }, [dragIndex.nodeLocations, state.selectedTarget])
 
     return (
         <svg
@@ -1100,6 +1196,8 @@ export function CanvasView(props: CanvasViewProps) {
                         />
                     </g>
                 ) : null}
+
+                {topSelectionBox ? <g pointerEvents="none">{renderSelectionOutline(true, topSelectionBox)}</g> : null}
             </g>
 
             {hoverOverlay && !pending && !dragging ? (
