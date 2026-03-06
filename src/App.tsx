@@ -6,7 +6,7 @@ import { useAppState } from './app/state'
 import { Toolbar } from './components/Toolbar'
 import { CanvasView } from './components/CanvasView'
 import { FloatingTextEditor } from './components/FloatingTextEditor'
-import { downloadJson, downloadPng, downloadSvg } from './utils/download'
+import { openProjectTextWithPicker, saveDiagramImage, saveProjectFile } from './utils/download'
 import { installKeyboardShortcuts } from './features/keyboard'
 import { buildProjectFile, parseProjectJsonDetailed } from './utils/projectJson'
 
@@ -381,31 +381,40 @@ export default function App() {
         [addCaseBranch, closeEditor],
     )
 
-    const importJsonInputRef = useRef<HTMLInputElement>(null)
+    const importProjectInputRef = useRef<HTMLInputElement>(null)
 
-    const onExportJson = useCallback(() => {
-        downloadJson(buildProjectFile(state), 'nsd-project.json')
-        showImportNotice({ kind: 'info', text: '已导出JSON：nsd-project.json' }, 1500)
+    const onExportImage = useCallback(async () => {
+        if (!svgRef.current) return
+
+        try {
+            const result = await saveDiagramImage(svgRef.current, 2)
+            if (!result.saved) return
+
+            const kindLabel = result.kind === 'svg' ? 'SVG' : 'PNG'
+            const fileName = result.fileName ?? (result.kind === 'svg' ? 'nsd-box.svg' : 'nsd-box.png')
+
+            showImportNotice({ kind: 'info', text: `已导出${kindLabel}：${fileName}` }, 1600)
+        } catch {
+            showImportNotice({ kind: 'error', text: '导出失败：无法写入图片文件。' }, 2600)
+        }
+    }, [showImportNotice])
+
+    const onExportProject = useCallback(async () => {
+        try {
+            const result = await saveProjectFile(buildProjectFile(state))
+            if (!result.saved) return
+
+            const kindLabel = result.kind === 'txt' ? 'TXT' : 'JSON'
+            const fileName = result.fileName ?? (result.kind === 'txt' ? 'nsd-project.txt' : 'nsd-project.json')
+
+            showImportNotice({ kind: 'info', text: `已导出${kindLabel}：${fileName}` }, 1600)
+        } catch {
+            showImportNotice({ kind: 'error', text: '导出失败：无法写入工程文件。' }, 2600)
+        }
     }, [showImportNotice, state])
 
-    const onImportJson = useCallback(() => {
-        importJsonInputRef.current?.click()
-    }, [])
-
-    const onImportJsonChange = useCallback(
-        async (event: ChangeEvent<HTMLInputElement>) => {
-            const file = event.target.files?.[0]
-            event.target.value = ''
-            if (!file) return
-
-            let text = ''
-            try {
-                text = await file.text()
-            } catch {
-                showImportNotice({ kind: 'error', text: '导入失败：无法读取文件内容。' }, 2600)
-                return
-            }
-
+    const applyImportedProjectText = useCallback(
+        (text: string, fileName: string | null) => {
             const result = parseProjectJsonDetailed(text)
             if (!result.ok) {
                 showImportNotice({ kind: 'error', text: result.message }, 3000)
@@ -426,9 +435,47 @@ export default function App() {
                 selectedTarget,
             })
 
-            showImportNotice({ kind: 'info', text: '导入JSON成功。' }, 1600)
+            showImportNotice(
+                { kind: 'info', text: fileName ? `导入成功：${fileName}` : '导入成功。' },
+                1600,
+            )
         },
         [closeEditor, replaceState, showImportNotice],
+    )
+
+    const onImportProject = useCallback(async () => {
+        try {
+            const result = await openProjectTextWithPicker()
+
+            if (!result.supported) {
+                importProjectInputRef.current?.click()
+                return
+            }
+
+            if (!result.opened) return
+            applyImportedProjectText(result.text, result.fileName)
+        } catch {
+            showImportNotice({ kind: 'error', text: '导入失败：无法读取文件内容。' }, 2600)
+        }
+    }, [applyImportedProjectText, showImportNotice])
+
+    const onImportProjectChange = useCallback(
+        async (event: ChangeEvent<HTMLInputElement>) => {
+            const file = event.target.files?.[0]
+            event.target.value = ''
+            if (!file) return
+
+            let text = ''
+            try {
+                text = await file.text()
+            } catch {
+                showImportNotice({ kind: 'error', text: '导入失败：无法读取文件内容。' }, 2600)
+                return
+            }
+
+            applyImportedProjectText(text, file.name)
+        },
+        [applyImportedProjectText, showImportNotice],
     )
 
     const onMoveByDragLocal = useCallback(
@@ -470,16 +517,6 @@ export default function App() {
         setEditingBranchIndex(branchIndex)
         setEditorTitle('编辑 CASE 分支标签')
     }, [])
-
-    function onExportSvg() {
-        if (!svgRef.current) return
-        downloadSvg(svgRef.current, 'nsd-box.svg')
-    }
-
-    async function onExportPng() {
-        if (!svgRef.current) return
-        await downloadPng(svgRef.current, 'nsd-box.png', 2)
-    }
 
     const onInitialize = useCallback(() => {
         closeEditor()
@@ -1114,10 +1151,9 @@ export default function App() {
                     canDeleteSelected={canDeleteSelected}
                     onDeleteSelected={onDeleteSelected}
                     onInitialize={onInitialize}
-                    onExportSvg={onExportSvg}
-                    onExportPng={onExportPng}
-                    onExportJson={onExportJson}
-                    onImportJson={onImportJson}
+                    onExportImage={onExportImage}
+                    onExportProject={onExportProject}
+                    onImportProject={onImportProject}
                 />
 
                 {importNotice ? (
@@ -1127,11 +1163,11 @@ export default function App() {
                 ) : null}
 
                 <input
-                    ref={importJsonInputRef}
+                    ref={importProjectInputRef}
                     type="file"
-                    accept=".json,application/json"
+                    accept=".json,.txt,application/json,text/plain"
                     style={{ display: 'none' }}
-                    onChange={onImportJsonChange}
+                    onChange={onImportProjectChange}
                 />
             </div>
 
@@ -1149,7 +1185,7 @@ export default function App() {
                     <br />
                     5. LOOP：点击 L 本体=同级操作；点击 L 内部空洞=块内操作（空洞选中不可删除）
                     <br />
-                    6. 导出 SVG / PNG / JSON（JSON 含缩放倍率）
+                    6. 导出 PNG/SVG、导出 JSON/TXT、导入 JSON/TXT（JSON/TXT 均为工程文件内容）
                     <br />
                     7. 选中节点时显示悬浮按钮：+（插入菜单） / ×（删除）
                     <br />

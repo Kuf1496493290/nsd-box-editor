@@ -19,12 +19,9 @@ type ToolbarProps = Readonly<{
 
     onInitialize: () => void
 
-    onExportSvg: () => void
-    onExportPng: () => void
-
-    onExportJson: () => void
-    onImportJson: () => void
-
+    onExportImage: () => void
+    onExportProject: () => void
+    onImportProject: () => void
 }>
 
 export function Toolbar(props: ToolbarProps) {
@@ -67,18 +64,14 @@ export function Toolbar(props: ToolbarProps) {
                 初始化
             </button>
 
-            <button className="button" onClick={props.onExportSvg}>
-                导出 SVG
+            <button className="button" onClick={props.onExportImage}>
+                导出 PNG/SVG
             </button>
-            <button className="button" onClick={props.onExportPng}>
-                导出 PNG
+            <button className="button" onClick={props.onExportProject}>
+                导出 JSON/TXT
             </button>
-
-            <button className="button" onClick={props.onExportJson}>
-                导出JSON
-            </button>
-            <button className="button" onClick={props.onImportJson}>
-                导入JSON
+            <button className="button" onClick={props.onImportProject}>
+                导入 JSON/TXT
             </button>
         </>
     )

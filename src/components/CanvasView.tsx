@@ -1013,7 +1013,7 @@ export function CanvasView(props: CanvasViewProps) {
             const rightW = Math.max(0, Math.ceil(ifBox.width - leftW))
 
             if (target.part === 'header') {
-                return { absX: owner.absX, absY: owner.absY, width: owner.width, height: headerH }
+                return { absX: owner.absX, absY: owner.absY, width: owner.width, height: owner.height }
             }
 
             if (target.part === 'trueLabel') {
@@ -1054,7 +1054,7 @@ export function CanvasView(props: CanvasViewProps) {
             const labelH = Math.max(yMin, Math.ceil(caseBox.meta?.labelH ?? headerH))
 
             if (target.part === 'header') {
-                return { absX: owner.absX, absY: owner.absY, width: owner.width, height: headerH }
+                return { absX: owner.absX, absY: owner.absY, width: owner.width, height: owner.height }
             }
 
             const idx = target.branchIndex
