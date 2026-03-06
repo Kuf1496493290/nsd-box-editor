@@ -14,7 +14,7 @@ import { canDeleteByTarget } from '../app/selection'
 import { layoutRoot } from '../layout/layoutEngine'
 import type { LayoutBox } from '../layout/layoutTypes'
 import { RenderNode } from '../render/renderNode'
-import { renderSelectionOutline } from '../render/renderCommon'
+import { baseBlockHeight, renderSelectionOutline } from '../render/renderCommon'
 import { NodeActions } from './NodeActions'
 
 type CanvasViewProps = Readonly<{
@@ -184,15 +184,7 @@ function InsertMenu(props: InsertMenuProps) {
                     <rect x={0} y={0} width={menuW} height={menuH} rx={6} ry={6} fill="white" stroke="black" strokeWidth={1} />
 
                     {Array.from({ length: Math.max(0, items.length - 1) }, (_, i) => (
-                        <line
-                            key={`sep-${i}`}
-                            x1={0}
-                            y1={itemH * (i + 1)}
-                            x2={menuW}
-                            y2={itemH * (i + 1)}
-                            stroke="black"
-                            strokeWidth={1}
-                        />
+                        <line key={`sep-${i}`} x1={0} y1={itemH * (i + 1)} x2={menuW} y2={itemH * (i + 1)} stroke="black" strokeWidth={1} />
                     ))}
 
                     {items.map((it, idx) => (
@@ -308,7 +300,6 @@ function computeInsertIndexByX(cols: ReadonlyArray<Readonly<{ x: number; w: numb
     return cols.length
 }
 
-/** 抽出重复逻辑：列重排的“边界 + 半区规则”插入位计算 */
 function computeReorderInsertIndexByX(cols: ReadonlyArray<Readonly<{ x: number; w: number }>>, x: number, edgeMarginX: number): number | null {
     if (cols.length <= 1) return null
 
@@ -600,9 +591,7 @@ export function CanvasView(props: CanvasViewProps) {
         const record = hiddenIfColumnRef.current
         if (!svg || !record) return
 
-        const el = svg.querySelector<SVGGElement>(
-            `[data-drag-if-column-id="${record.ifId}"][data-drag-if-column-branch="${record.branch}"]`,
-        )
+        const el = svg.querySelector<SVGGElement>(`[data-drag-if-column-id="${record.ifId}"][data-drag-if-column-branch="${record.branch}"]`)
         if (el) el.style.opacity = record.prevOpacity
 
         hiddenIfColumnRef.current = null
@@ -641,9 +630,7 @@ export function CanvasView(props: CanvasViewProps) {
             const svg = svgRef.current
             if (!svg) return
 
-            const el = svg.querySelector<SVGGElement>(
-                `[data-drag-if-column-id="${ifId}"][data-drag-if-column-branch="${branch}"]`,
-            )
+            const el = svg.querySelector<SVGGElement>(`[data-drag-if-column-id="${ifId}"][data-drag-if-column-branch="${branch}"]`)
             if (!el) return
 
             hiddenIfColumnRef.current = { ifId, branch, prevOpacity: el.style.opacity }
@@ -877,9 +864,7 @@ export function CanvasView(props: CanvasViewProps) {
             event.preventDefault()
             try {
                 svgRef.current?.setPointerCapture(event.pointerId)
-            } catch {
-                // ignore
-            }
+            } catch { /* empty */ }
 
             if (pending.kind === 'node') {
                 setPending(null)
@@ -917,7 +902,7 @@ export function CanvasView(props: CanvasViewProps) {
 
     function finishIfResultDrag(d: Extract<ActiveDrag, { kind: 'ifResult' }>, p: Point) {
         const owner = dragIndex.owners.get(d.ifId)
-        if (!owner || owner.box.node.type !== 'if') return
+        if (owner?.box.node.type !== 'if') return
 
         const rect = { x: owner.absX, y: owner.absY, w: owner.width, h: owner.height }
         if (!isPointInRectWithMarginXY(p, rect, OWNER_HIT_MARGIN_X, OWNER_HIT_MARGIN_Y)) return
@@ -945,7 +930,7 @@ export function CanvasView(props: CanvasViewProps) {
 
     function finishCaseResultDrag(d: Extract<ActiveDrag, { kind: 'caseResult' }>, p: Point) {
         const owner = dragIndex.owners.get(d.caseId)
-        if (!owner || owner.box.node.type !== 'case') return
+        if (owner?.box.node.type !== 'case') return
 
         const rect = { x: owner.absX, y: owner.absY, w: owner.width, h: owner.height }
         if (!isPointInRectWithMarginXY(p, rect, OWNER_HIT_MARGIN_X, OWNER_HIT_MARGIN_Y)) return
@@ -1013,19 +998,76 @@ export function CanvasView(props: CanvasViewProps) {
         event.preventDefault()
     }
 
-    const resolveCaseBranchContainerAnchor = useCallback(
+    const resolveIfPartAnchor = useCallback(
         (nodeId: string, target: SelectionTarget | null): AnchorRect | null => {
-            if (target?.kind !== 'casePart' || target.nodeId !== nodeId || target.part !== 'branchContainer') return null
+            if (target?.kind !== 'ifPart' || target.nodeId !== nodeId) return null
+
+            const owner = dragIndex.owners.get(nodeId)
+            if (owner?.box.node.type !== 'if') return null
+
+            const ifBox = owner.box
+            const yMin = baseBlockHeight(state.style)
+            const headerH = Math.max(yMin, Math.ceil(ifBox.meta?.headerH ?? yMin))
+
+            const leftW = Math.max(0, Math.ceil(ifBox.children[1]?.x ?? ifBox.width / 2))
+            const rightW = Math.max(0, Math.ceil(ifBox.width - leftW))
+
+            if (target.part === 'header') {
+                return { absX: owner.absX, absY: owner.absY, width: owner.width, height: headerH }
+            }
+
+            if (target.part === 'trueLabel') {
+                return { absX: owner.absX, absY: owner.absY, width: leftW, height: headerH }
+            }
+
+            if (target.part === 'falseLabel') {
+                return { absX: owner.absX + leftW, absY: owner.absY, width: rightW, height: headerH }
+            }
+
+            if (target.part === 'trueContainer') {
+                const b = ifBox.children[0]
+                if (!b) return null
+                return { absX: owner.absX + b.x, absY: owner.absY + b.y, width: b.width, height: b.height }
+            }
+
+            if (target.part === 'falseContainer') {
+                const b = ifBox.children[1]
+                if (!b) return null
+                return { absX: owner.absX + b.x, absY: owner.absY + b.y, width: b.width, height: b.height }
+            }
+
+            return null
+        },
+        [dragIndex.owners, state.style],
+    )
+
+    const resolveCasePartAnchor = useCallback(
+        (nodeId: string, target: SelectionTarget | null): AnchorRect | null => {
+            if (target?.kind !== 'casePart' || target.nodeId !== nodeId) return null
 
             const owner = dragIndex.owners.get(nodeId)
             if (owner?.box.node.type !== 'case') return null
 
-            const b = owner.box.children[target.branchIndex]
+            const caseBox = owner.box
+            const yMin = baseBlockHeight(state.style)
+            const headerH = Math.max(yMin, Math.ceil(caseBox.meta?.headerH ?? yMin))
+            const labelH = Math.max(yMin, Math.ceil(caseBox.meta?.labelH ?? headerH))
+
+            if (target.part === 'header') {
+                return { absX: owner.absX, absY: owner.absY, width: owner.width, height: headerH }
+            }
+
+            const idx = target.branchIndex
+            const b = caseBox.children[idx]
             if (!b) return null
+
+            if (target.part === 'branchLabel') {
+                return { absX: owner.absX + b.x, absY: owner.absY + headerH, width: b.width, height: labelH }
+            }
 
             return { absX: owner.absX + b.x, absY: owner.absY + b.y, width: b.width, height: b.height }
         },
-        [dragIndex.owners],
+        [dragIndex.owners, state.style],
     )
 
     const resolveLoopHoleAnchor = useCallback(
@@ -1054,13 +1096,9 @@ export function CanvasView(props: CanvasViewProps) {
 
     const resolveAnchorRect = useCallback(
         (nodeId: string, target: SelectionTarget | null): AnchorRect | null => {
-            return (
-                resolveCaseBranchContainerAnchor(nodeId, target) ??
-                resolveLoopHoleAnchor(nodeId, target) ??
-                resolveDefaultAnchor(nodeId)
-            )
+            return resolveIfPartAnchor(nodeId, target) ?? resolveCasePartAnchor(nodeId, target) ?? resolveLoopHoleAnchor(nodeId, target) ?? resolveDefaultAnchor(nodeId)
         },
-        [resolveCaseBranchContainerAnchor, resolveDefaultAnchor, resolveLoopHoleAnchor],
+        [resolveCasePartAnchor, resolveDefaultAnchor, resolveIfPartAnchor, resolveLoopHoleAnchor],
     )
 
     const hoverOverlay = useMemo<HoverOverlay | null>(() => {
@@ -1160,11 +1198,7 @@ export function CanvasView(props: CanvasViewProps) {
                 />
 
                 {dragging ? (
-                    <g
-                        transform={`translate(${dragging.pointerX - dragging.grabOffsetX}, ${dragging.pointerY - dragging.grabOffsetY})`}
-                        opacity={0.55}
-                        pointerEvents="none"
-                    >
+                    <g transform={`translate(${dragging.pointerX - dragging.grabOffsetX}, ${dragging.pointerY - dragging.grabOffsetY})`} opacity={0.55} pointerEvents="none">
                         <RenderNode
                             box={dragging.ghostBox}
                             style={state.style}

@@ -42,14 +42,15 @@ type RenderLoopProps = Readonly<{
     onAddCaseBranch?: (caseId: string) => void
 }>
 
-function buildLoopPath(kind: 'while' | 'doWhile', L: number, a: number): string {
-    const l = Math.max(0, L - a)
+function buildLoopPath(kind: 'while' | 'doWhile', W: number, H: number, a: number): string {
+    const wHole = Math.max(0, W - a)
+    const hHole = Math.max(0, H - a)
 
     if (kind === 'while') {
-        return `M 0 0 L ${L} 0 L ${L} ${a} L ${a} ${a} L ${a} ${L} L 0 ${L} Z`
+        return `M 0 0 L ${W} 0 L ${W} ${a} L ${a} ${a} L ${a} ${H} L 0 ${H} Z`
     }
 
-    return `M ${l} 0 L ${L} 0 L ${L} ${L} L 0 ${L} L 0 ${l} L ${l} ${l} Z`
+    return `M ${wHole} 0 L ${W} 0 L ${W} ${H} L 0 ${H} L 0 ${hHole} L ${wHole} ${hHole} Z`
 }
 
 export function RenderLoop(props: RenderLoopProps) {
@@ -88,8 +89,15 @@ export function RenderLoop(props: RenderLoopProps) {
 
     const a = loopArmSize(style)
 
-    const L = Math.ceil(Math.min(box.width, box.height))
-    const l = Math.max(0, L - a)
+    const W = Math.max(0, Math.ceil(box.width))
+    const H = Math.max(0, Math.ceil(box.height))
+
+    const holeW = Math.max(0, W - a)
+    const holeH = Math.max(0, H - a)
+
+    const isWhile = node.loopKind === 'while'
+    const holeX = isWhile ? a : 0
+    const holeY = isWhile ? a : 0
 
     const holeSelected =
         selectedTarget?.kind === 'loopPart' && selectedTarget.nodeId === node.id && selectedTarget.part === 'hole'
@@ -100,18 +108,14 @@ export function RenderLoop(props: RenderLoopProps) {
     const hasBodyChildren = node.body.children.length > 0
     const showHole = !hasBodyChildren
 
-    const isWhile = node.loopKind === 'while'
-    const pathD = buildLoopPath(node.loopKind, L, a)
+    const pathD = buildLoopPath(node.loopKind, W, H, a)
 
-    const holeX = isWhile ? a : 0
-    const holeY = isWhile ? a : 0
+    const textAreaY = isWhile ? 0 : Math.max(0, H - a)
 
-    const textAreaY = isWhile ? 0 : l
-
-    const verticalX = isWhile ? 0 : l
+    const verticalX = isWhile ? 0 : Math.max(0, W - a)
     const verticalW = a
 
-    const horizontalY = isWhile ? 0 : l
+    const horizontalY = isWhile ? 0 : Math.max(0, H - a)
     const horizontalH = a
 
     function handleLoopClick(event: ReactMouseEvent<SVGGElement>) {
@@ -129,26 +133,17 @@ export function RenderLoop(props: RenderLoopProps) {
         onLoopHoleSelect(node.id)
     }
 
-    const bodyBox = box.children[0]
-    const bodyBoxLocal = bodyBox
-        ? ({
-            ...bodyBox,
-            x: 0,
-            y: 0,
-            width: l,
-            height: l,
-        } satisfies LayoutBox)
-        : null
+    const bodyBox = box.children[0] ?? null
 
     return (
         <g transform={`translate(${box.x}, ${box.y})`}>
             <path d={pathD} fill="white" stroke="black" strokeWidth={style.lineWidth} />
 
-            {renderSelectionOutline(loopSelected, { ...box, x: 0, y: 0 })}
+            {renderSelectionOutline(loopSelected, { ...box, x: 0, y: 0, width: W, height: H })}
 
             <g onClick={handleLoopClick} style={{ cursor: 'pointer' }} aria-label="选择 LOOP">
-                <rect x={verticalX} y={0} width={verticalW} height={L} fill="transparent" />
-                <rect x={0} y={horizontalY} width={L} height={horizontalH} fill="transparent" />
+                <rect x={verticalX} y={0} width={verticalW} height={H} fill="transparent" />
+                <rect x={0} y={horizontalY} width={W} height={horizontalH} fill="transparent" />
             </g>
 
             <g
@@ -157,9 +152,9 @@ export function RenderLoop(props: RenderLoopProps) {
                 style={{ cursor: 'pointer' }}
                 aria-label="LOOP 条件（横条）"
             >
-                <rect x={0} y={textAreaY} width={L} height={a} fill="transparent" />
+                <rect x={0} y={textAreaY} width={W} height={a} fill="transparent" />
                 <text
-                    x={L / 2}
+                    x={W / 2}
                     y={textAreaY + a / 2}
                     textAnchor="middle"
                     dominantBaseline="middle"
@@ -176,45 +171,43 @@ export function RenderLoop(props: RenderLoopProps) {
                 renderSelectablePlaceholder({
                     x: holeX,
                     y: holeY,
-                    w: l,
-                    h: l,
+                    w: holeW,
+                    h: holeH,
                     selected: holeSelected,
                     onClick: handleHoleClick,
                 })
             ) : null}
 
-            {!showHole && bodyBoxLocal ? (
-                <g transform={`translate(${holeX}, ${holeY})`}>
-                    <RenderNode
-                        box={bodyBoxLocal}
-                        style={style}
-                        selectedNodeId={selectedNodeId}
-                        selectedTarget={selectedTarget}
-                        onProcessSelect={onProcessSelect}
-                        onProcessDoubleClick={onProcessDoubleClick}
-                        onIfHeaderSelect={onIfHeaderSelect}
-                        onIfHeaderDoubleClick={onIfHeaderDoubleClick}
-                        onIfPartSelect={onIfPartSelect}
-                        onIfLabelDoubleClick={onIfLabelDoubleClick}
-                        onCaseHeaderSelect={onCaseHeaderSelect}
-                        onCaseHeaderDoubleClick={onCaseHeaderDoubleClick}
-                        onCasePartSelect={onCasePartSelect}
-                        onCaseBranchLabelDoubleClick={onCaseBranchLabelDoubleClick}
-                        onLoopSelect={onLoopSelect}
-                        onLoopConditionDoubleClick={onLoopConditionDoubleClick}
-                        onLoopHoleSelect={onLoopHoleSelect}
-                        onInsertProcessAfter={onInsertProcessAfter}
-                        onInsertIfAfter={onInsertIfAfter}
-                        onInsertCaseAfter={onInsertCaseAfter}
-                        onInsertWhileAfter={onInsertWhileAfter}
-                        onInsertDoWhileAfter={onInsertDoWhileAfter}
-                        onMoveProcessUp={onMoveProcessUp}
-                        onMoveProcessDown={onMoveProcessDown}
-                        onDeleteProcess={onDeleteProcess}
-                        onDeleteSelected={onDeleteSelected}
-                        onAddCaseBranch={onAddCaseBranch}
-                    />
-                </g>
+            {!showHole && bodyBox ? (
+                <RenderNode
+                    box={bodyBox}
+                    style={style}
+                    selectedNodeId={selectedNodeId}
+                    selectedTarget={selectedTarget}
+                    onProcessSelect={onProcessSelect}
+                    onProcessDoubleClick={onProcessDoubleClick}
+                    onIfHeaderSelect={onIfHeaderSelect}
+                    onIfHeaderDoubleClick={onIfHeaderDoubleClick}
+                    onIfPartSelect={onIfPartSelect}
+                    onIfLabelDoubleClick={onIfLabelDoubleClick}
+                    onCaseHeaderSelect={onCaseHeaderSelect}
+                    onCaseHeaderDoubleClick={onCaseHeaderDoubleClick}
+                    onCasePartSelect={onCasePartSelect}
+                    onCaseBranchLabelDoubleClick={onCaseBranchLabelDoubleClick}
+                    onLoopSelect={onLoopSelect}
+                    onLoopConditionDoubleClick={onLoopConditionDoubleClick}
+                    onLoopHoleSelect={onLoopHoleSelect}
+                    onInsertProcessAfter={onInsertProcessAfter}
+                    onInsertIfAfter={onInsertIfAfter}
+                    onInsertCaseAfter={onInsertCaseAfter}
+                    onInsertWhileAfter={onInsertWhileAfter}
+                    onInsertDoWhileAfter={onInsertDoWhileAfter}
+                    onMoveProcessUp={onMoveProcessUp}
+                    onMoveProcessDown={onMoveProcessDown}
+                    onDeleteProcess={onDeleteProcess}
+                    onDeleteSelected={onDeleteSelected}
+                    onAddCaseBranch={onAddCaseBranch}
+                />
             ) : null}
         </g>
     )

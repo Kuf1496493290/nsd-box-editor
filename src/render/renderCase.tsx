@@ -111,9 +111,9 @@ export function RenderCase(props: RenderCaseProps) {
     const selected = getSelectedCasePart(selectedTarget, caseNode.id)
     const isSelectedNode = selectedNodeId === caseNode.id || selectedTarget?.nodeId === caseNode.id
 
-    const y = baseBlockHeight(style)
-    const headerH = y
-    const labelH = y
+    const yMin = baseBlockHeight(style)
+    const headerH = Math.max(yMin, Math.ceil(box.meta?.headerH ?? yMin))
+    const labelH = Math.max(yMin, Math.ceil(box.meta?.labelH ?? headerH))
 
     const x0 = box.x
     const y0 = box.y
@@ -135,8 +135,8 @@ export function RenderCase(props: RenderCaseProps) {
     const trapPoints = [
         [x0, y0] as const,
         [x0 + w, y0] as const,
-        [x0 + w - triBase, y0 + y] as const,
-        [x0 + triBase, y0 + y] as const,
+        [x0 + w - triBase, y0 + headerH] as const,
+        [x0 + triBase, y0 + headerH] as const,
     ] as const
 
     const headerTextX = x0 + w / 2
@@ -168,43 +168,14 @@ export function RenderCase(props: RenderCaseProps) {
 
     return (
         <g>
-            <rect
-                x={x0}
-                y={y0}
-                width={w}
-                height={headerH + labelH}
-                fill="white"
-                stroke="black"
-                strokeWidth={style.lineWidth}
-            />
+            <rect x={x0} y={y0} width={w} height={headerH + labelH} fill="white" stroke="black" strokeWidth={style.lineWidth} />
 
             {renderSelectionOutline(isSelectedNode, box)}
 
-            <line
-                x1={x0}
-                y1={y0 + headerH}
-                x2={x0 + w}
-                y2={y0 + headerH}
-                stroke="black"
-                strokeWidth={style.lineWidth}
-            />
+            <line x1={x0} y1={y0 + headerH} x2={x0 + w} y2={y0 + headerH} stroke="black" strokeWidth={style.lineWidth} />
 
-            <line
-                x1={x0}
-                y1={y0}
-                x2={x0 + triBase}
-                y2={y0 + headerH}
-                stroke="black"
-                strokeWidth={style.lineWidth}
-            />
-            <line
-                x1={x0 + w}
-                y1={y0}
-                x2={x0 + w - triBase}
-                y2={y0 + headerH}
-                stroke="black"
-                strokeWidth={style.lineWidth}
-            />
+            <line x1={x0} y1={y0} x2={x0 + triBase} y2={y0 + headerH} stroke="black" strokeWidth={style.lineWidth} />
+            <line x1={x0 + w} y1={y0} x2={x0 + w - triBase} y2={y0 + headerH} stroke="black" strokeWidth={style.lineWidth} />
 
             {boundaries.map((x, i) => (
                 <line
@@ -219,22 +190,10 @@ export function RenderCase(props: RenderCaseProps) {
             ))}
 
             {bodyH > 0 ? (
-                <line
-                    x1={x0}
-                    y1={bodyTopY}
-                    x2={x0 + w}
-                    y2={bodyTopY}
-                    stroke="black"
-                    strokeWidth={style.lineWidth}
-                />
+                <line x1={x0} y1={bodyTopY} x2={x0 + w} y2={bodyTopY} stroke="black" strokeWidth={style.lineWidth} />
             ) : null}
 
-            <g
-                onClick={handleHeaderClick}
-                onDoubleClick={handleHeaderDoubleClick}
-                style={{ cursor: 'pointer' }}
-                aria-label="编辑 CASE 条件"
-            >
+            <g onClick={handleHeaderClick} onDoubleClick={handleHeaderDoubleClick} style={{ cursor: 'pointer' }} aria-label="编辑 CASE 条件">
                 <rect x={x0} y={y0} width={w} height={headerH} fill="transparent" />
                 <path d={polygonPath(trapPoints)} fill="transparent" />
                 {selected.part === 'header' ? dashedPolygonOutline(trapPoints) : null}

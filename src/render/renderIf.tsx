@@ -100,10 +100,6 @@ function lineIntersection(p1: Pt, d1: Pt, p2: Pt, d2: Pt): Pt | null {
     return { x: p1.x + d1.x * t, y: p1.y + d1.y * t }
 }
 
-/**
- * 三角形“严格内缩一圈”（平行内缩）：三条边按内法线平移 inset，再求相交。
- * 视觉上会像矩形/多边形的虚线一样“缩小一圈”，不会贴边或与边重合。
- */
 function insetTriangle(tri: Tri, inset: number): Tri {
     const [a0, b0, c0] = tri
     const insetSafe = Number.isFinite(inset) ? Math.max(0, inset) : 0
@@ -157,8 +153,6 @@ function renderBranchContent(params: Readonly<{
     selectedTarget: SelectionTarget | null
     showTruePlaceholder: boolean
     showFalsePlaceholder: boolean
-    x0: number
-    splitX: number
     bodyH: number
     leftW: number
     rightW: number
@@ -197,8 +191,6 @@ function renderBranchContent(params: Readonly<{
         selectedTarget,
         showTruePlaceholder,
         showFalsePlaceholder,
-        x0,
-        splitX,
         bodyH,
         leftW,
         rightW,
@@ -235,7 +227,7 @@ function renderBranchContent(params: Readonly<{
             <g data-drag-if-column-id={ifNodeId} data-drag-if-column-branch="true">
                 {showTruePlaceholder
                     ? renderSelectablePlaceholder({
-                        x: x0,
+                        x: 0,
                         y: 0,
                         w: leftW,
                         h: bodyH,
@@ -286,7 +278,7 @@ function renderBranchContent(params: Readonly<{
             <g data-drag-if-column-id={ifNodeId} data-drag-if-column-branch="false">
                 {showFalsePlaceholder
                     ? renderSelectablePlaceholder({
-                        x: splitX,
+                        x: leftW,
                         y: 0,
                         w: rightW,
                         h: bodyH,
@@ -374,8 +366,8 @@ export function RenderIf(props: RenderIfProps) {
     const ifNode = node
     const selectedIfPart = getSelectedIfPart(selectedTarget, ifNode.id)
 
-    const y = baseBlockHeight(style)
-    const headerH = y
+    const yMin = baseBlockHeight(style)
+    const headerH = Math.max(yMin, Math.ceil(box.meta?.headerH ?? yMin))
 
     const x0 = box.x
     const y0 = box.y
@@ -389,11 +381,11 @@ export function RenderIf(props: RenderIfProps) {
 
     const diagLeftTop: Pt = { x: x0, y: y0 }
     const diagRightTop: Pt = { x: xRight, y: y0 }
-    const bottomSplit: Pt = { x: splitX, y: y0 + y }
+    const bottomSplit: Pt = { x: splitX, y: y0 + headerH }
 
     const headerTriangle: ReadonlyArray<Pt> = [diagLeftTop, diagRightTop, bottomSplit]
-    const trueTriangle: Tri = [diagLeftTop, bottomSplit, { x: x0, y: y0 + y }] as const
-    const falseTriangle: Tri = [diagRightTop, { x: xRight, y: y0 + y }, bottomSplit] as const
+    const trueTriangle: Tri = [diagLeftTop, bottomSplit, { x: x0, y: y0 + headerH }] as const
+    const falseTriangle: Tri = [diagRightTop, { x: xRight, y: y0 + headerH }, bottomSplit] as const
 
     const { trueLabel, falseLabel } = getIfLabels(ifNode)
 
@@ -437,14 +429,13 @@ export function RenderIf(props: RenderIfProps) {
     const trueTextX = clampNumber(x0 + inset, x0 + inset, splitX - inset)
     const falseTextX = clampNumber(xRight - inset, splitX + inset, xRight - inset)
 
-    const trueDiagY = diagYOnTrueTriangle(trueTextX, x0, y0, splitX, y)
-    const falseDiagY = diagYOnFalseTriangle(falseTextX, xRight, y0, splitX, y)
+    const trueDiagY = diagYOnTrueTriangle(trueTextX, x0, y0, splitX, headerH)
+    const falseDiagY = diagYOnFalseTriangle(falseTextX, xRight, y0, splitX, headerH)
 
-    const bottomY = y0 + y
+    const bottomY = y0 + headerH
     const trueTextY = (trueDiagY + bottomY) / 2
     const falseTextY = (falseDiagY + bottomY) / 2
 
-    // 关键：把内缩量调到“约等于线宽”，视觉上会接近其它虚线（约 1px 内缩）
     const partInset = Math.max(3, Math.ceil(style.lineWidth))
     const trueTriangleInset = insetTriangle(trueTriangle, partInset)
     const falseTriangleInset = insetTriangle(falseTriangle, partInset)
@@ -456,7 +447,9 @@ export function RenderIf(props: RenderIfProps) {
             <line x1={x0} y1={y0} x2={bottomSplit.x} y2={bottomSplit.y} stroke="black" strokeWidth={style.lineWidth} />
             <line x1={xRight} y1={y0} x2={bottomSplit.x} y2={bottomSplit.y} stroke="black" strokeWidth={style.lineWidth} />
 
-            {bodyH > 0 ? <line x1={x0} y1={bodyTopY} x2={xRight} y2={bodyTopY} stroke="black" strokeWidth={style.lineWidth} /> : null}
+            {bodyH > 0 ? (
+                <line x1={x0} y1={bodyTopY} x2={xRight} y2={bodyTopY} stroke="black" strokeWidth={style.lineWidth} />
+            ) : null}
 
             <g onClick={handleHeaderClick} onDoubleClick={handleHeaderDoubleClick} style={{ cursor: 'pointer' }} aria-label="编辑 IF 条件">
                 <path d={polygonPath(toTuplePoints(headerTriangle))} fill="transparent" />
@@ -464,7 +457,7 @@ export function RenderIf(props: RenderIfProps) {
 
                 <text
                     x={x0 + w / 2}
-                    y={y0 + y * 0.38}
+                    y={y0 + headerH * 0.38}
                     textAnchor="middle"
                     dominantBaseline="middle"
                     fontFamily={style.fontFamily}
@@ -549,8 +542,6 @@ export function RenderIf(props: RenderIfProps) {
                 selectedTarget,
                 showTruePlaceholder,
                 showFalsePlaceholder,
-                x0,
-                splitX,
                 bodyH,
                 leftW,
                 rightW,

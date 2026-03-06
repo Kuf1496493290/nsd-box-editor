@@ -114,40 +114,6 @@ export function renderSelectablePlaceholder(params: Readonly<{
     )
 }
 
-/**
- * “空的地方/空洞”用：不画虚线边界，只提供可选中区域
- */
-export function renderInvisibleSelectableArea(params: Readonly<{
-    x: number
-    y: number
-    w: number
-    h: number
-    selected: boolean
-    onClick: (event: ReactMouseEvent<SVGGElement>) => void
-}>): ReactNode {
-    const { x, y, w, h, selected, onClick } = params
-    if (h <= 0 || w <= 0) return null
-
-    return (
-        <g onClick={onClick} style={{ cursor: 'pointer' }}>
-            <rect x={x} y={y} width={w} height={h} fill="transparent" />
-            {selected ? (
-                <rect
-                    x={x + 3}
-                    y={y + 3}
-                    width={Math.max(0, w - 6)}
-                    height={Math.max(0, h - 6)}
-                    fill="none"
-                    stroke="black"
-                    strokeWidth={1}
-                    strokeDasharray="6 4"
-                    pointerEvents="none"
-                />
-            ) : null}
-        </g>
-    )
-}
-
 export function polygonPath(points: ReadonlyArray<readonly [number, number]>): string {
     if (points.length <= 0) return ''
     const [x0, y0] = points[0]
