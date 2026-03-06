@@ -151,6 +151,25 @@ function isCaseConditionTarget(target: SelectionTarget): boolean {
     return target.kind === 'node' || (target.kind === 'casePart' && target.part === 'header')
 }
 
+function getCaseBranchAddRequest(
+    target: SelectionTarget | null,
+): Readonly<{ nodeId: string; insertAfterBranchIndex?: number }> | null {
+    if (target?.kind !== 'casePart') return null
+
+    if (target.part === 'header') {
+        return { nodeId: target.nodeId }
+    }
+
+    if (target.part === 'branchLabel') {
+        return {
+            nodeId: target.nodeId,
+            insertAfterBranchIndex: target.branchIndex,
+        }
+    }
+
+    return null
+}
+
 /**
  * Enter 编辑目标拾取（降低 Cognitive Complexity 以满足 Sonar 规则）
  */
@@ -343,9 +362,12 @@ export default function App() {
 
     const selectedNode = useMemo(() => findNodeById(state.root, state.selectedNodeId), [state.root, state.selectedNodeId])
 
-    // 关键：仅当 CASE header（条件框）选中时可“增加分支”
-    const canAddCaseBranch =
-        state.selectedTarget?.kind === 'casePart' && state.selectedTarget.part === 'header'
+    const caseBranchAddRequest = useMemo(
+        () => getCaseBranchAddRequest(state.selectedTarget),
+        [state.selectedTarget],
+    )
+
+    const canAddCaseBranch = caseBranchAddRequest !== null
 
     const canDeleteSelected = useMemo(() => canDeleteByTarget(state.selectedTarget), [state.selectedTarget])
 
@@ -374,9 +396,9 @@ export default function App() {
     }, [canRedo, closeEditor, redo])
 
     const performAddCaseBranch = useCallback(
-        (caseId: string) => {
+        (caseId: string, insertAfterBranchIndex?: number) => {
             closeEditor()
-            addCaseBranch(caseId)
+            addCaseBranch(caseId, insertAfterBranchIndex)
         },
         [addCaseBranch, closeEditor],
     )
@@ -739,13 +761,13 @@ export default function App() {
     }
 
     const onAddCaseBranchLocal = useCallback(
-        (caseId: string) => {
-            performAddCaseBranch(caseId)
+        (caseId: string, insertAfterBranchIndex?: number) => {
+            performAddCaseBranch(caseId, insertAfterBranchIndex)
         },
         [performAddCaseBranch],
     )
 
-    const deleteSelectedCaseBranch = useCallback(
+    const deleteSelectedCaseResult = useCallback(
         (node: Extract<NsdNode, { type: 'case' }>, branchIndex: number) => {
             if (node.branches.length > 2) {
                 closeEditor()
@@ -767,6 +789,42 @@ export default function App() {
         [closeEditor, deleteProcess],
     )
 
+    const performDeleteBySelection = useCallback(
+        (target: SelectionTarget, node: NsdNode) => {
+            if (target.kind === 'loopPart') {
+                return
+            }
+
+            if (target.kind === 'ifPart') {
+                if (target.part === 'trueContainer' || target.part === 'falseContainer') {
+                    return
+                }
+
+                if (node.type !== 'if') return
+                deleteSelectedNode(node)
+                return
+            }
+
+            if (target.kind === 'casePart') {
+                if (target.part === 'branchContainer') {
+                    return
+                }
+
+                if (target.part === 'branchLabel') {
+                    if (node.type !== 'case') return
+                    deleteSelectedCaseResult(node, target.branchIndex)
+                    return
+                }
+
+                deleteSelectedNode(node)
+                return
+            }
+
+            deleteSelectedNode(node)
+        },
+        [deleteSelectedCaseResult, deleteSelectedNode],
+    )
+
     const onDeleteSelected = useCallback(() => {
         if (!canDeleteSelected) return
 
@@ -774,16 +832,8 @@ export default function App() {
         const node = selectedNode
         if (!node || !target) return
 
-        if (target.kind === 'loopPart') return
-
-        if (target.kind === 'casePart' && target.part !== 'header') {
-            if (node.type !== 'case') return
-            deleteSelectedCaseBranch(node, target.branchIndex)
-            return
-        }
-
-        deleteSelectedNode(node)
-    }, [canDeleteSelected, deleteSelectedCaseBranch, deleteSelectedNode, selectedNode, state.selectedTarget])
+        performDeleteBySelection(target, node)
+    }, [canDeleteSelected, performDeleteBySelection, selectedNode, state.selectedTarget])
 
     function onToolbarAddProcess() {
         const target = state.selectedTarget
@@ -1065,13 +1115,14 @@ export default function App() {
         addDoWhileAfter(target.nodeId)
     }
 
-    // 关键：Toolbar “增加分支”也只认 CASE header 选中
     const onToolbarAddCaseBranch = useCallback(() => {
-        const t = state.selectedTarget
-        if (t?.kind !== 'casePart') return
-        if (t.part !== 'header') return
-        performAddCaseBranch(t.nodeId)
-    }, [performAddCaseBranch, state.selectedTarget])
+        if (!caseBranchAddRequest) return
+
+        performAddCaseBranch(
+            caseBranchAddRequest.nodeId,
+            caseBranchAddRequest.insertAfterBranchIndex,
+        )
+    }, [caseBranchAddRequest, performAddCaseBranch])
 
     const onKeyboardEnter = useCallback((): boolean => {
         const target = state.selectedTarget
@@ -1092,20 +1143,18 @@ export default function App() {
         return true
     }, [openCaseBranchLabelEditor, openEditor, state.root, state.selectedTarget])
 
-    // 关键：Tab 仅在 CASE 条件框（header）选中时生效
     const onKeyboardTab = useCallback((): boolean => {
-        const target = state.selectedTarget
-        if (!target) return false
+        if (!caseBranchAddRequest) return false
 
-        if (target.kind !== 'casePart') return false
-        if (target.part !== 'header') return false
-
-        const node = findNodeById(state.root, target.nodeId)
+        const node = findNodeById(state.root, caseBranchAddRequest.nodeId)
         if (node?.type !== 'case') return false
 
-        performAddCaseBranch(node.id)
+        performAddCaseBranch(
+            caseBranchAddRequest.nodeId,
+            caseBranchAddRequest.insertAfterBranchIndex,
+        )
         return true
-    }, [performAddCaseBranch, state.root, state.selectedTarget])
+    }, [caseBranchAddRequest, performAddCaseBranch, state.root])
 
     const onKeyboardDelete = useCallback((): boolean => {
         if (!canDeleteSelected) return false
@@ -1189,11 +1238,13 @@ export default function App() {
                     <br />
                     7. 选中节点时显示悬浮按钮：+（插入菜单） / ×（删除）
                     <br />
-                    8. IF 标签区可选中；CASE 分支标签可选中（Delete=删分支）；空容器选中不可删除
+                    8. IF 标签区可选中（Delete=删整个 IF）；CASE 分支标签可选中（Delete=删当前分支及其内容；增加分支=在当前右侧插入）；空容器选中不可删除
                     <br />
                     9. 撤销/重做：Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y
                     <br />
                     10. 删除：Delete（空洞/空容器选中时无效）
+                    <br />
+                    11. CASE 增加分支：选中条件框时末尾追加；选中分支标签时在当前右侧插入；新增后自动选中新分支
                 </div>
 
                 <div className="field" style={{ marginTop: 12 }}>

@@ -15,6 +15,8 @@
 - 支持拖拽重排（同容器内节点与结果分支调整）
 - 支持节点文本与条件文本编辑
 - 支持项目 JSON 下载与加载
+- 选择语义插入：根据当前选中区域（节点 / 分支标签 / 分支容器 / Loop 空洞）决定插入位置
+- 键盘快捷键：`Ctrl+Z` / `Ctrl+Shift+Z` / `Ctrl+Y`、`Delete`、`Enter`（编辑）、`Tab`（CASE 增加分支）
 
 ### 技术栈
 
@@ -114,6 +116,8 @@ It is designed for creating, editing, and reordering structured flow nodes (Proc
 - Drag-and-drop reordering (intra-container nodes and result branches)
 - Editable node text and condition text
 - Project JSON download and load
+- Selection-aware insertion: insertion position depends on selected target (node / branch label / branch container / loop hole)
+- Keyboard shortcuts: `Ctrl+Z` / `Ctrl+Shift+Z` / `Ctrl+Y`, `Delete`, `Enter` (edit), `Tab` (add CASE branch)
 
 ### Tech Stack
 

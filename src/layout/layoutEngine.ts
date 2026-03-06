@@ -20,11 +20,11 @@ function measureTextWidthSafe(text: string, style: StyleConfig): number {
 }
 
 function processPadY(style: StyleConfig): number {
-    return safePad(style.paddingProcessY ?? style.paddingProcess ?? 9)
+    return safePad(style.paddingProcessY)
 }
 
 function processPadX(style: StyleConfig): number {
-    return safePad(style.paddingProcessX ?? style.paddingProcess ?? 9)
+    return safePad(style.paddingProcessX)
 }
 
 /**

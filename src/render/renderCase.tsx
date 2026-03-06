@@ -109,7 +109,7 @@ export function RenderCase(props: RenderCaseProps) {
     const caseNode: CaseNode = node
 
     const selected = getSelectedCasePart(selectedTarget, caseNode.id)
-    const isSelectedNode = selectedNodeId === caseNode.id || selectedTarget?.nodeId === caseNode.id
+    const wholeCaseSelected = selected.part === 'header'
 
     const yMin = baseBlockHeight(style)
     const headerH = Math.max(yMin, Math.ceil(box.meta?.headerH ?? yMin))
@@ -170,7 +170,7 @@ export function RenderCase(props: RenderCaseProps) {
         <g>
             <rect x={x0} y={y0} width={w} height={headerH + labelH} fill="white" stroke="black" strokeWidth={style.lineWidth} />
 
-            {renderSelectionOutline(isSelectedNode, box)}
+            {renderSelectionOutline(wholeCaseSelected, box)}
 
             <line x1={x0} y1={y0 + headerH} x2={x0 + w} y2={y0 + headerH} stroke="black" strokeWidth={style.lineWidth} />
 

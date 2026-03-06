@@ -54,7 +54,7 @@ type CanvasViewProps = Readonly<{
     onDeleteProcess: (nodeId: string) => void
 
     onDeleteSelected: () => void
-    onAddCaseBranch: (caseId: string) => void
+    onAddCaseBranch: (caseId: string, insertAfterBranchIndex?: number) => void
 
     onMoveByDrag: (req: DragMoveRequest) => void
 }>
@@ -208,6 +208,7 @@ type HoverOverlay = Readonly<{
     deleteX: number
     deleteEnabled: boolean
     showAddCaseBranch: boolean
+    addCaseBranchAfterIndex?: number
 }>
 
 const CONTAINER_HIT_MARGIN_X = 6
@@ -1123,10 +1124,25 @@ export function CanvasView(props: CanvasViewProps) {
         const showAddCaseBranch =
             nodeType === 'case' &&
             target?.kind === 'casePart' &&
-            target.part === 'header' &&
-            target.nodeId === activeNodeId
+            target.nodeId === activeNodeId &&
+            (target.part === 'header' || target.part === 'branchLabel')
 
-        return { nodeId: activeNodeId, insertX, insertY, deleteX, deleteEnabled, showAddCaseBranch }
+        const addCaseBranchAfterIndex =
+            target?.kind === 'casePart' &&
+            target.nodeId === activeNodeId &&
+            target.part === 'branchLabel'
+                ? target.branchIndex
+                : undefined
+
+        return {
+            nodeId: activeNodeId,
+            insertX,
+            insertY,
+            deleteX,
+            deleteEnabled,
+            showAddCaseBranch,
+            addCaseBranchAfterIndex,
+        }
     }, [dragIndex.nodeLocations, resolveAnchorRect, state.selectedNodeId, state.selectedTarget])
 
     const isInsertMenuOpen = hoverOverlay?.nodeId !== undefined && openInsertMenuNodeId === hoverOverlay?.nodeId
@@ -1268,7 +1284,7 @@ export function CanvasView(props: CanvasViewProps) {
                             hoverOverlay.showAddCaseBranch
                                 ? () => {
                                     setOpenInsertMenuNodeId(null)
-                                    onAddCaseBranch(hoverOverlay.nodeId)
+                                    onAddCaseBranch(hoverOverlay.nodeId, hoverOverlay.addCaseBranchAfterIndex)
                                 }
                                 : undefined
                         }

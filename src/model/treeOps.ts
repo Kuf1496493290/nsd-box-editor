@@ -773,7 +773,11 @@ export function insertDoWhileAfter(root: SequenceNode, nodeId: string): UpdateRe
     return insertLoopAfter(root, nodeId, 'doWhile')
 }
 
-export function addCaseBranchInRoot(root: SequenceNode, caseNodeId: string): UpdateResult {
+export function addCaseBranchInRoot(
+    root: SequenceNode,
+    caseNodeId: string,
+    insertAfterBranchIndex?: number,
+): UpdateResult {
     let changed = false
     let selectedTarget: SelectionTarget | null | undefined = undefined
 
@@ -782,15 +786,23 @@ export function addCaseBranchInRoot(root: SequenceNode, caseNodeId: string): Upd
         if (node.id !== caseNodeId) return node
 
         const baseLabels = normalizeCaseBranchLabels(node.branchLabels, node.branches.length)
-        const nextBranches = [...node.branches, createSequenceNode([])]
-        const nextLabels = [...baseLabels, String(nextBranches.length)]
+        const insertAt =
+            insertAfterBranchIndex === undefined
+                ? node.branches.length
+                : clampIndex(insertAfterBranchIndex + 1, node.branches.length)
+
+        const nextBranches = [...node.branches]
+        nextBranches.splice(insertAt, 0, createSequenceNode([]))
+
+        const nextLabels = [...baseLabels]
+        nextLabels.splice(insertAt, 0, String(node.branches.length + 1))
 
         changed = true
         selectedTarget = {
             kind: 'casePart',
             nodeId: node.id,
             part: 'branchLabel',
-            branchIndex: nextBranches.length - 1,
+            branchIndex: insertAt,
         }
 
         return {
@@ -833,15 +845,14 @@ export function deleteCaseBranchInRoot(root: SequenceNode, caseNodeId: string, b
     return {
         root: nextRoot,
         changed,
-        selectedNodeId: caseNodeId,
-        selectedTarget: changed ? { kind: 'casePart', nodeId: caseNodeId, part: 'header' } : undefined,
+        selectedNodeId: changed ? null : undefined,
+        selectedTarget: changed ? null : undefined,
     }
 }
 
 export function deleteNode(
     root: SequenceNode,
     nodeId: string,
-    currentSelectedNodeId: string | null,
 ): UpdateResult {
     return updateWithinSequence(root, (sequence) => {
         const index = sequence.children.findIndex((node) => node.id === nodeId)
@@ -849,19 +860,14 @@ export function deleteNode(
 
         const nextChildren = sequence.children.filter((node) => node.id !== nodeId)
 
-        let nextSelectedId: string | null | undefined = currentSelectedNodeId
-        if (currentSelectedNodeId === nodeId) {
-            const fallback = nextChildren[index] ?? nextChildren[index - 1] ?? null
-            nextSelectedId = fallback?.id ?? null
-        }
-
         return {
             root: {
                 ...sequence,
                 children: nextChildren,
             },
             changed: true,
-            selectedNodeId: nextSelectedId,
+            selectedNodeId: null,
+            selectedTarget: null,
         }
     })
 }

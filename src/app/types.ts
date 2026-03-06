@@ -52,8 +52,6 @@ export interface StyleConfig {
     paddingBranchLabel: number
     loopSidebarWidth: number
     minBlockWidth: number
-
-    paddingProcess?: number
 }
 
 export type IfPartKey = 'header' | 'trueLabel' | 'falseLabel' | 'trueContainer' | 'falseContainer'

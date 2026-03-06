@@ -146,7 +146,7 @@ export function safePad(value: number): number {
 }
 
 function processPadY(style: StyleConfig): number {
-    return safePad(style.paddingProcessY ?? style.paddingProcess ?? 9)
+    return safePad(style.paddingProcessY ?? 9)
 }
 
 /**

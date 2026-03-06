@@ -169,12 +169,6 @@ function commitHistory(prev: HistoryState, nextPresent: AppState): HistoryState 
         future: [],
     }
 }
-
-function isTargetStillValid(root: SequenceNode, target: SelectionTarget | null): boolean {
-    if (!target) return true
-    return containsNode(root, target.nodeId)
-}
-
 function clampScale(value: number): number {
     const v = Number.isFinite(value) ? value : 1
     const clamped = Math.max(0.5, Math.min(2, v))
@@ -187,7 +181,7 @@ function withSelection(
     selectedNodeId?: string | null,
     selectedTarget?: SelectionTarget | null,
 ): AppState {
-    const nextSelectedNodeId = selectedNodeId ?? prev.selectedNodeId
+    const nextSelectedNodeId = selectedNodeId === undefined ? prev.selectedNodeId : selectedNodeId
     const resolvedTarget = selectedTarget === undefined ? defaultTargetForNode(root, nextSelectedNodeId ?? null) : selectedTarget
 
     return normalizeSelection({
@@ -575,10 +569,10 @@ export function useAppState() {
         })
     }
 
-    function addCaseBranch(nodeId: string) {
+    function addCaseBranch(nodeId: string, insertAfterBranchIndex?: number) {
         setHistory((prev) => {
             const present = prev.present
-            const result = addCaseBranchInRoot(present.root, nodeId)
+            const result = addCaseBranchInRoot(present.root, nodeId, insertAfterBranchIndex)
             if (!result.changed) return prev
             return commitHistory(prev, withSelection(present, result.root, result.selectedNodeId, result.selectedTarget))
         })
@@ -623,30 +617,10 @@ export function useAppState() {
     function deleteProcess(nodeId: string) {
         setHistory((prev) => {
             const present = prev.present
-            const result = deleteNode(present.root, nodeId, present.selectedNodeId)
+            const result = deleteNode(present.root, nodeId)
             if (!result.changed) return prev
 
-            const deletingSelected = present.selectedNodeId === nodeId
-            let nextSelectedNodeId = result.selectedNodeId ?? present.selectedNodeId
-            let nextSelectedTarget = present.selectedTarget
-
-            const selectedNodeValid = nextSelectedNodeId === null ? true : containsNode(result.root, nextSelectedNodeId)
-
-            if (!selectedNodeValid) {
-                nextSelectedNodeId = null
-                nextSelectedTarget = null
-            } else if (deletingSelected) {
-                nextSelectedTarget = defaultTargetForNode(result.root, nextSelectedNodeId ?? null)
-            } else if (!isTargetStillValid(result.root, nextSelectedTarget)) {
-                nextSelectedTarget = defaultTargetForNode(result.root, nextSelectedNodeId ?? null)
-            }
-
-            return commitHistory(prev, {
-                ...present,
-                root: result.root,
-                selectedNodeId: nextSelectedNodeId ?? null,
-                selectedTarget: nextSelectedTarget ?? null,
-            })
+            return commitHistory(prev, withSelection(present, result.root, null, null))
         })
     }
 

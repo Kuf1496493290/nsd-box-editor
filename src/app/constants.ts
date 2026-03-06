@@ -7,7 +7,7 @@ import { createProcessNode } from '../model/factory'
  *
  * 说明：
  * - 这里的 x/y 是“默认风格”的基准值（新建工程时使用）
- * - 导入 JSON 时会使用文件里的 style，所以老工程不会被强行改样式
+ * - 导入 JSON 时会使用文件里的 style，因此工程样式以导入内容为准
  */
 export const BASE_BLOCK_WIDTH = 240
 export const BASE_BLOCK_HEIGHT = 36

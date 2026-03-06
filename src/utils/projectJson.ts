@@ -2,10 +2,7 @@
 import type { AppState, BoolLabelMode, LoopKind, NsdNode, SequenceNode, StyleConfig } from '../app/types'
 import { DEFAULT_STYLE } from '../app/constants'
 
-export const PROJECT_SCHEMA_VERSION = 2 as const
-
-type ProjectFileV2 = Readonly<{
-    schemaVersion: 2
+type ProjectFile = Readonly<{
     root: unknown
     style: unknown
     scale?: unknown
@@ -198,9 +195,8 @@ function normalizeStyle(raw: unknown): StyleConfig {
     return next
 }
 
-export function buildProjectFile(state: AppState): ProjectFileV2 {
+export function buildProjectFile(state: AppState): ProjectFile {
     return {
-        schemaVersion: PROJECT_SCHEMA_VERSION,
         root: state.root,
         style: state.style,
         scale: state.scale,
@@ -216,11 +212,6 @@ export function parseProjectJsonDetailed(text: string): ProjectParseResult {
     }
 
     if (!isPlainObject(data)) return { ok: false, message: '导入失败：JSON 根对象格式不正确。' }
-
-    const schemaVersion = data.schemaVersion
-    if (schemaVersion !== PROJECT_SCHEMA_VERSION) {
-        return { ok: false, message: `导入失败：schemaVersion 不支持（期望 ${PROJECT_SCHEMA_VERSION}）。` }
-    }
 
     const root = normalizeSequence(data.root)
     if (!root) return { ok: false, message: '导入失败：root 不是合法的 sequence 结构。' }
