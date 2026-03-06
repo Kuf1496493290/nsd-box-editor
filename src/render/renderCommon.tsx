@@ -75,13 +75,14 @@ export function renderSelectablePlaceholder(params: Readonly<{
     w: number
     h: number
     selected: boolean
+    noDrag?: boolean
     onClick: (event: ReactMouseEvent<SVGGElement>) => void
 }>): ReactNode {
-    const { x, y, w, h, selected, onClick } = params
+    const { x, y, w, h, selected, noDrag = false, onClick } = params
     if (h <= 0) return null
 
     return (
-        <g onClick={onClick} style={{ cursor: 'pointer' }}>
+        <g onClick={onClick} style={{ cursor: 'pointer' }} data-no-drag={noDrag ? '1' : undefined}>
             <rect x={x} y={y} width={w} height={h} fill="transparent" />
 
             {selected ? (
@@ -144,11 +145,15 @@ export function safePad(value: number): number {
     return Math.max(1, Math.ceil(value))
 }
 
+function processPadY(style: StyleConfig): number {
+    return safePad(style.paddingProcessY ?? style.paddingProcess ?? 9)
+}
+
 /**
  * y：初始化矩形固定高度（与 layoutEngine 口径一致）
  */
 export function baseBlockHeight(style: StyleConfig): number {
-    const processPad = safePad(style.paddingProcess)
+    const processPad = processPadY(style)
     return Math.ceil(lineBoxHeight(style.fontSize) + processPad * 2)
 }
 

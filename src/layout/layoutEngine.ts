@@ -19,11 +19,19 @@ function measureTextWidthSafe(text: string, style: StyleConfig): number {
     return base + margin
 }
 
+function processPadY(style: StyleConfig): number {
+    return safePad(style.paddingProcessY ?? style.paddingProcess ?? 9)
+}
+
+function processPadX(style: StyleConfig): number {
+    return safePad(style.paddingProcessX ?? style.paddingProcess ?? 9)
+}
+
 /**
  * y：初始化矩形的固定高度（由 DEFAULT_STYLE 保证稳定）
  */
 function baseBlockHeight(style: StyleConfig): number {
-    const processPad = safePad(style.paddingProcess)
+    const processPad = processPadY(style)
     return Math.ceil(lineBoxHeight(style.fontSize) + processPad * 2)
 }
 
@@ -53,17 +61,12 @@ function minLoopSide(style: StyleConfig): number {
 
 /**
  * 最小宽度口径：
- * - 你要求：所有图形宽最短 >= x/4（不再用 y 兜底）
+ * - 你要求：所有图形宽最短 >= x/4
+ * - 不再按深度倍率递减
  */
-function softMinWidth(style: StyleConfig, depth: number): number {
+function softMinWidth(style: StyleConfig): number {
     const x = baseBlockWidth(style)
-    const floor = Math.max(48, Math.ceil(x / 4))
-
-    if (depth <= 0) return floor
-
-    const divisor = Math.pow(1.8, depth)
-    const v = x / divisor
-    return Math.max(floor, Math.ceil(v))
+    return Math.max(48, Math.ceil(x / 4))
 }
 
 function isLoopOnlyTopLevelSequence(node: SequenceNode): boolean {
@@ -138,9 +141,9 @@ function requiredLoopSide(node: LoopNode, style: StyleConfig, depth: number): nu
 function requiredWidth(node: NsdNode, style: StyleConfig, depth: number): number {
     const headerPad = safePad(style.paddingHeader)
     const labelPad = safePad(style.paddingBranchLabel)
-    const processPad = safePad(style.paddingProcess)
+    const processPad = processPadX(style)
 
-    const softMin = softMinWidth(style, depth)
+    const softMin = softMinWidth(style)
 
     if (node.type === 'process') {
         const textW = measureTextWidthSafe(node.text || '', style)
@@ -148,11 +151,12 @@ function requiredWidth(node: NsdNode, style: StyleConfig, depth: number): number
     }
 
     if (node.type === 'sequence') {
-        if (node.children.length === 0) return softMin
+        if (node.children.length === 0) {
+            return softMin
+        }
 
         const childReq = node.children.map((c) => requiredWidth(c, style, depth))
 
-        // 顶层“纯 loop”序列：宽度应由 loop 的最小边长主导，不能被 softMinWidth(depth) 抬高
         if (depth > 0 && isLoopOnlyTopLevelSequence(node)) {
             return Math.max(...childReq)
         }
@@ -171,8 +175,8 @@ function requiredWidth(node: NsdNode, style: StyleConfig, depth: number): number
         const trueNeed = requiredWidth(node.trueBranch, style, depth + 1)
         const falseNeed = requiredWidth(node.falseBranch, style, depth + 1)
 
-        const leftNeed = Math.max(softMinWidth(style, depth + 1), trueLabelNeed, trueNeed)
-        const rightNeed = Math.max(softMinWidth(style, depth + 1), falseLabelNeed, falseNeed)
+        const leftNeed = Math.max(softMinWidth(style), trueLabelNeed, trueNeed)
+        const rightNeed = Math.max(softMinWidth(style), falseLabelNeed, falseNeed)
 
         return Math.max(softMin, conditionW, Math.ceil(leftNeed + rightNeed))
     }
@@ -186,7 +190,7 @@ function requiredWidth(node: NsdNode, style: StyleConfig, depth: number): number
             const label = labels[i] ?? String(i + 1)
             const labelNeed = Math.ceil(measureTextWidthSafe(label, style) + labelPad * 2)
             const branchNeed = branchNeeds[i] ?? 0
-            return Math.max(softMinWidth(style, depth + 1), labelNeed, branchNeed)
+            return Math.max(softMinWidth(style), labelNeed, branchNeed)
         })
 
         const sumCols = Math.ceil(sumNumbers(colNeeds))
@@ -349,32 +353,26 @@ function hasTopLevelShrinkDriver(node: SequenceNode, depth: number): boolean {
 }
 
 function computeSequenceTargetWidth(node: SequenceNode, style: StyleConfig, depth: number, forcedWidth?: number): number {
-    const softMin = softMinWidth(style, depth)
+    const softMin = softMinWidth(style)
     const x = baseBlockWidth(style)
 
     if (node.children.length === 0) {
-        // 顶层空序列默认宽度也要是 x
         const base = depth === 0 ? x : softMin
         return Math.ceil(Math.max(base, forcedWidth ?? 0))
     }
 
     const childNeeds = node.children.map((c) => requiredWidth(c, style, depth))
 
-    // 顶层纯 loop：仍然保持你之前的“不要用 softMin 抬高洞宽”的规则
     if (depth > 0 && isLoopOnlyTopLevelSequence(node)) {
         return Math.ceil(Math.max(Math.max(...childNeeds), forcedWidth ?? 0))
     }
 
-    // 顶层默认宽度门控：
-    // - 没有缩短触发器：默认宽度至少为 x（保持“最外层最小图形默认 x/y”）
-    // - 有缩短触发器：允许脱离 x，转为“最大硬最小宽度”（= max(softMin, ...childNeeds)）
     if (depth === 0) {
         const hasShrinkDriver = hasTopLevelShrinkDriver(node, depth)
         const base = hasShrinkDriver ? Math.max(softMin, ...childNeeds) : Math.max(x, ...childNeeds)
         return Math.ceil(Math.max(base, forcedWidth ?? 0))
     }
 
-    // 非顶层：保持原逻辑（最小值口径由 softMin 控制）
     const base = Math.max(softMin, ...childNeeds)
     return Math.ceil(Math.max(base, forcedWidth ?? 0))
 }
@@ -561,6 +559,7 @@ function layoutSequence(
 
 type BranchAnalysis = Readonly<{
     loopCount: number
+    supportCount: number
     nonLoopCount: number
     nonLoopMinSum: number
     loopMaxMinSide: number
@@ -568,17 +567,27 @@ type BranchAnalysis = Readonly<{
 }>
 
 /**
- * 分支顶层分析（修复暴涨的关键点）：
- * - loopMaxMinSide 只用 requiredLoopSide（固有需求），不把“列宽 w”反灌进 loop 的最小边长
+ * 分支顶层分析：
+ * - loop：参与“按总高反推宽度”的可分配单元
+ * - process：可充当兜底/支撑节点，也参与“按总高反推宽度”的可分配单元
+ * - 其他节点（if/case 等）：视为刚性节点，只保留自己的最小高度，不参与等分
  */
 function analyzeBranchTopLevel(branch: SequenceNode, style: StyleConfig, depth: number, width: number): BranchAnalysis {
     if (branch.children.length === 0) {
-        return { loopCount: 0, nonLoopCount: 0, nonLoopMinSum: 0, loopMaxMinSide: 0, minEqualSlotTotal: 0 }
+        return {
+            loopCount: 0,
+            supportCount: 0,
+            nonLoopCount: 0,
+            nonLoopMinSum: 0,
+            loopMaxMinSide: 0,
+            minEqualSlotTotal: 0,
+        }
     }
 
     const w = Math.max(0, Math.ceil(width))
 
     let loopCount = 0
+    let supportCount = 0
     let nonLoopCount = 0
     let nonLoopMinSum = 0
     let loopMaxMinSide = 0
@@ -594,42 +603,51 @@ function analyzeBranchTopLevel(branch: SequenceNode, style: StyleConfig, depth: 
         }
 
         const box = layoutNode(child, style, depth, w)
+        maxMinH = Math.max(maxMinH, Math.max(0, Math.ceil(box.height)))
+
+        if (child.type === 'process') {
+            supportCount += 1
+            continue
+        }
+
         nonLoopCount += 1
         nonLoopMinSum += box.height
-        maxMinH = Math.max(maxMinH, box.height)
     }
 
     return {
         loopCount,
+        supportCount,
         nonLoopCount,
         nonLoopMinSum: Math.ceil(nonLoopMinSum),
         loopMaxMinSide: Math.ceil(loopMaxMinSide),
-        minEqualSlotTotal: Math.ceil(branch.children.length * maxMinH),
+        minEqualSlotTotal: Math.ceil(Math.max(maxMinH, baseBlockHeight(style)) * branch.children.length),
     }
 }
 
-function computeNonLoopCore(analyses: BranchAnalysis[], y: number): number {
-    let core = 0
-    for (const a of analyses) {
-        if (a.nonLoopCount > 0) core = Math.max(core, a.nonLoopMinSum)
+function computeFlexUnits(analysis: BranchAnalysis): number {
+    if (analysis.loopCount <= 0) {
+        return 0
     }
-    return Math.max(0, Math.ceil(core), y)
+
+    return Math.max(0, analysis.loopCount + analysis.supportCount)
 }
 
-function computeLoopTotalCore(analyses: BranchAnalysis[]): number {
-    let core = 0
-    for (const a of analyses) {
-        if (a.loopCount > 0) core = Math.max(core, a.loopCount * a.loopMaxMinSide)
-    }
-    return Math.max(0, Math.ceil(core))
-}
+function computeBranchMinTotal(baseNeed: number, analysis: BranchAnalysis): number {
+    const unitNeed = Math.max(
+        0,
+        Math.ceil(baseNeed),
+        Math.ceil(analysis.loopMaxMinSide),
+    )
 
-function maxNoLoopMinNeed(analyses: BranchAnalysis[]): number {
-    let v = 0
-    for (const a of analyses) {
-        if (a.loopCount <= 0) v = Math.max(v, a.minEqualSlotTotal)
+    const flexUnits = computeFlexUnits(analysis)
+    if (flexUnits > 0) {
+        return Math.ceil(analysis.nonLoopMinSum + flexUnits * unitNeed)
     }
-    return Math.max(0, Math.ceil(v))
+
+    return Math.max(
+        Math.ceil(analysis.nonLoopMinSum),
+        Math.ceil(analysis.minEqualSlotTotal),
+    )
 }
 
 type BodyDecision = Readonly<{
@@ -645,30 +663,30 @@ function computeBodyForAnalyses(params: Readonly<{
     y: number
     forcedBodyH: number
     analyses: BranchAnalysis[]
+    baseNeeds: number[]
 }>): BodyDecision {
-    const { y, forcedBodyH, analyses } = params
+    const { y, forcedBodyH, analyses, baseNeeds } = params
 
     const hasAnyLoop = analyses.some((a) => a.loopCount > 0)
-    const anyNonLoop = analyses.some((a) => a.nonLoopCount > 0)
-    const anyMixed = analyses.some((a) => a.loopCount > 0 && a.nonLoopCount > 0)
-    const isCompetition = hasAnyLoop && anyNonLoop && !anyMixed
+    const anyNonLoop = analyses.some((a) => a.nonLoopCount > 0 || a.supportCount > 0)
+    const anyMixed = analyses.some((a) => a.loopCount > 0 && (a.nonLoopCount > 0 || a.supportCount > 0))
 
-    if (!hasAnyLoop) {
-        let maxNeed = y
-        for (const a of analyses) maxNeed = Math.max(maxNeed, a.minEqualSlotTotal)
-        const bodyH = Math.max(maxNeed, forcedBodyH)
-        return { bodyH, nonLoopCore: bodyH, hasAnyLoop: false, anyNonLoop, anyMixed: false, isCompetition: false }
+    let bodyH = Math.max(0, Math.ceil(y), Math.max(0, Math.ceil(forcedBodyH)))
+
+    for (let i = 0; i < analyses.length; i += 1) {
+        const analysis = analyses[i]
+        const baseNeed = Math.max(0, Math.ceil(baseNeeds[i] ?? 0))
+        bodyH = Math.max(bodyH, computeBranchMinTotal(baseNeed, analysis))
     }
 
-    const nonLoopCore = computeNonLoopCore(analyses, 0)
-    const loopTotalCore = computeLoopTotalCore(analyses)
-    const noLoopNeed = maxNoLoopMinNeed(analyses)
-
-    const bodyH = isCompetition
-        ? Math.max(y, loopTotalCore, nonLoopCore, noLoopNeed, forcedBodyH)
-        : Math.max(y, loopTotalCore + nonLoopCore, noLoopNeed, forcedBodyH)
-
-    return { bodyH, nonLoopCore, hasAnyLoop: true, anyNonLoop, anyMixed, isCompetition }
+    return {
+        bodyH: Math.ceil(bodyH),
+        nonLoopCore: 0,
+        hasAnyLoop,
+        anyNonLoop,
+        anyMixed,
+        isCompetition: false,
+    }
 }
 
 function layoutBranchChildAtSlot(params: Readonly<{
@@ -734,19 +752,40 @@ function layoutBranchSequence(
         return { id: branch.id, node: branch, x: 0, y: 0, width: w, height: h, children: boxes }
     }
 
-    const loopTotal = Math.max(0, h - Math.max(0, Math.ceil(nonLoopTotalTarget)))
-    const loopSlots = distributeSlots(loopTotal, analysis.loopCount)
-
     const nonLoopChildren = branch.children.filter((c) => c.type !== 'loop')
     const nonLoopMinHeights = nonLoopChildren.map((c) => layoutNode(c, style, depth, w).height)
-    const nonLoopMinSum = Math.ceil(sumNumbers(nonLoopMinHeights))
-    const targetNonLoop = Math.max(nonLoopMinSum, Math.max(0, Math.ceil(nonLoopTotalTarget)))
+    const supportFlags = nonLoopChildren.map((c) => c.type === 'process')
 
-    const extraNonLoop = Math.max(0, targetNonLoop - nonLoopMinSum)
-    const extraSlots = distributeSlots(extraNonLoop, nonLoopChildren.length)
+    let rigidMinSum = 0
+    let supportMinSum = 0
+
+    for (let i = 0; i < nonLoopChildren.length; i += 1) {
+        const minH = Math.max(0, Math.ceil(nonLoopMinHeights[i] ?? 0))
+        if (supportFlags[i]) {
+            supportMinSum += minH
+        } else {
+            rigidMinSum += minH
+        }
+    }
+
+    const targetNonLoop = Math.max(
+        Math.ceil(rigidMinSum + supportMinSum),
+        Math.max(0, Math.ceil(nonLoopTotalTarget)),
+    )
+
+    const loopTotal = Math.max(0, h - targetNonLoop)
+    const loopSlots = distributeSlots(loopTotal, analysis.loopCount)
+
+    const supportIndices = supportFlags
+        .map((isSupport, index) => (isSupport ? index : -1))
+        .filter((index) => index >= 0)
+
+    const extraSupport = Math.max(0, targetNonLoop - rigidMinSum - supportMinSum)
+    const supportExtraSlots = distributeSlots(extraSupport, supportIndices.length)
 
     let loopIndex = 0
     let nonLoopIndex = 0
+    let supportIndex = 0
 
     const boxes: LayoutBox[] = []
     let y = 0
@@ -768,11 +807,13 @@ function layoutBranchSequence(
             continue
         }
 
-        const minH = nonLoopMinHeights[nonLoopIndex] ?? baseBlockHeight(style)
-        const add = extraSlots[nonLoopIndex] ?? 0
+        const minH = Math.max(0, Math.ceil(nonLoopMinHeights[nonLoopIndex] ?? baseBlockHeight(style)))
+        const isSupport = supportFlags[nonLoopIndex] ?? false
         nonLoopIndex += 1
 
-        const slotH = Math.ceil(minH + add)
+        const slotH = isSupport
+            ? Math.ceil(minH + (supportExtraSlots[supportIndex++] ?? 0))
+            : minH
 
         y = layoutBranchChildAtSlot({
             child,
@@ -802,6 +843,19 @@ function areSameWidths(a: number[], b: number[]): boolean {
     return true
 }
 
+function equalizeBranchWidths(widths: number[], targetTotal: number): number[] {
+    if (widths.length <= 0) return []
+
+    const normalized = widths.map((v) => Math.max(0, Math.ceil(v)))
+    const target = Math.max(0, Math.ceil(targetTotal))
+
+    const perWidth = Math.max(
+        Math.max(...normalized),
+        Math.ceil(target / normalized.length),
+    )
+
+    return normalized.map(() => perWidth)
+}
 function computeBaseNeeds(branches: SequenceNode[], baseNeedAt: (b: SequenceNode, i: number) => number): number[] {
     return branches.map((b, i) => Math.max(0, Math.ceil(baseNeedAt(b, i))))
 }
@@ -809,32 +863,27 @@ function computeBaseNeeds(branches: SequenceNode[], baseNeedAt: (b: SequenceNode
 function collectAnalyses(branches: SequenceNode[], style: StyleConfig, depth: number, widths: number[]): BranchAnalysis[] {
     return branches.map((b, i) => analyzeBranchTopLevel(b, style, depth, Math.max(0, Math.ceil(widths[i] ?? 0))))
 }
-
-function computeLoopShare(bodyH: number, a: BranchAnalysis, nonLoopCore: number, isCompetition: boolean): number {
-    if (a.loopCount <= 0) return 0
-    if (isCompetition) return Math.max(0, Math.ceil(bodyH))
-    const isMixed = a.nonLoopCount > 0
-    return isMixed ? Math.max(0, Math.ceil(bodyH) - Math.max(0, Math.ceil(nonLoopCore))) : Math.max(0, Math.ceil(bodyH))
-}
-
-function computeStructuralWidths(baseNeeds: number[], analyses: BranchAnalysis[], decision: BodyDecision, bodyH: number): number[] {
-    const nonLoopCore = Math.max(0, Math.ceil(decision.nonLoopCore))
-    const isCompetition = decision.isCompetition
-
+function computeStructuralWidths(baseNeeds: number[], analyses: BranchAnalysis[], bodyH: number): number[] {
+    const h = Math.max(0, Math.ceil(bodyH))
     const out: number[] = []
-    for (let i = 0; i < analyses.length; i += 1) {
-        const a = analyses[i]
-        const baseNeed = baseNeeds[i] ?? 0
 
-        if (a.loopCount <= 0) {
-            out.push(Math.max(0, Math.ceil(baseNeed)))
+    for (let i = 0; i < analyses.length; i += 1) {
+        const analysis = analyses[i]
+        const baseNeed = Math.max(
+            0,
+            Math.ceil(baseNeeds[i] ?? 0),
+            Math.ceil(analysis.loopMaxMinSide),
+        )
+
+        const flexUnits = computeFlexUnits(analysis)
+        if (flexUnits > 0) {
+            const available = Math.max(0, h - Math.max(0, Math.ceil(analysis.nonLoopMinSum)))
+            const unitW = Math.floor(available / flexUnits)
+            out.push(Math.max(baseNeed, unitW))
             continue
         }
 
-        const minSide = Math.max(0, Math.ceil(baseNeed), Math.ceil(a.loopMaxMinSide))
-        const share = computeLoopShare(bodyH, a, nonLoopCore, isCompetition)
-        const colW = Math.floor(share / Math.max(1, a.loopCount))
-        out.push(Math.max(minSide, Math.max(0, colW)))
+        out.push(baseNeed)
     }
 
     return out
@@ -888,8 +937,12 @@ function ensureMinTotalWidthWithSupportPriority(widths: number[], analyses: Bran
 
     const extra = targetTotal - cur
     const supportIndices: number[] = []
+
     for (let i = 0; i < analyses.length; i += 1) {
-        if ((analyses[i]?.loopCount ?? 0) <= 0) supportIndices.push(i)
+        const analysis = analyses[i]
+        if ((analysis?.loopCount ?? 0) <= 0 || (analysis?.supportCount ?? 0) > 0) {
+            supportIndices.push(i)
+        }
     }
 
     if (supportIndices.length > 0) {
@@ -899,20 +952,29 @@ function ensureMinTotalWidthWithSupportPriority(widths: number[], analyses: Bran
     return ensureMinTotalWidth(w, targetTotal)
 }
 
-function minBodyHForLoopWidths(widths: number[], analyses: BranchAnalysis[], decision: BodyDecision): number {
-    const isCompetition = decision.isCompetition
-    const nonLoopCore = Math.max(0, Math.ceil(decision.nonLoopCore))
-
+function minBodyHForBranchWidths(widths: number[], analyses: BranchAnalysis[]): number {
     let need = 0
+
     for (let i = 0; i < analyses.length; i += 1) {
-        const a = analyses[i]
-        if (a.loopCount <= 0) continue
-
+        const analysis = analyses[i]
         const colW = Math.max(0, Math.ceil(widths[i] ?? 0))
-        const loops = Math.max(1, a.loopCount)
+        const flexUnits = computeFlexUnits(analysis)
 
-        const base = !isCompetition && a.nonLoopCount > 0 ? nonLoopCore : 0
-        need = Math.max(need, base + loops * colW)
+        if (flexUnits > 0) {
+            need = Math.max(
+                need,
+                Math.ceil(analysis.nonLoopMinSum + flexUnits * colW),
+            )
+            continue
+        }
+
+        need = Math.max(
+            need,
+            Math.max(
+                Math.ceil(analysis.nonLoopMinSum),
+                Math.ceil(analysis.minEqualSlotTotal),
+            ),
+        )
     }
 
     return Math.max(0, Math.ceil(need))
@@ -929,16 +991,15 @@ function computeLoopWidthsAndBodyH(params: Readonly<{
 
     let bodyH = Math.max(0, Math.ceil(decision.bodyH), Math.max(0, Math.ceil(forcedBodyH)))
 
-    let widths = computeStructuralWidths(baseNeeds, analyses, decision, bodyH)
-
+    let widths = computeStructuralWidths(baseNeeds, analyses, bodyH)
     widths = ensureMinTotalWidthWithSupportPriority(widths, analyses, minTotalW)
 
-    bodyH = Math.max(bodyH, minBodyHForLoopWidths(widths, analyses, decision))
+    bodyH = Math.max(bodyH, minBodyHForBranchWidths(widths, analyses))
 
-    widths = computeStructuralWidths(baseNeeds, analyses, decision, bodyH)
+    widths = computeStructuralWidths(baseNeeds, analyses, bodyH)
     widths = ensureMinTotalWidthWithSupportPriority(widths, analyses, minTotalW)
 
-    bodyH = Math.max(bodyH, minBodyHForLoopWidths(widths, analyses, decision))
+    bodyH = Math.max(bodyH, minBodyHForBranchWidths(widths, analyses))
 
     return { widths, bodyH: Math.ceil(bodyH) }
 }
@@ -966,10 +1027,15 @@ function stabilizeBranches(params: Readonly<{
         const baseNeeds = computeBaseNeeds(branches, baseNeedAt)
 
         analyses = collectAnalyses(branches, style, depth, widths)
-        const baseDecision = computeBodyForAnalyses({ y, forcedBodyH, analyses })
+        const baseDecision = computeBodyForAnalyses({
+            y,
+            forcedBodyH,
+            analyses,
+            baseNeeds,
+        })
 
         if (!baseDecision.hasAnyLoop) {
-            const nextWidths = ensureMinTotalWidth(baseNeeds, minTotalW)
+            const nextWidths = equalizeBranchWidths(baseNeeds, minTotalW)
             const stable = areSameWidths(nextWidths, widths)
             widths = nextWidths
             if (stable) break
@@ -995,16 +1061,25 @@ function stabilizeBranches(params: Readonly<{
         if (stable) break
     }
 
+    const baseNeeds = computeBaseNeeds(branches, baseNeedAt)
     analyses = collectAnalyses(branches, style, depth, widths)
-    const finalBase = computeBodyForAnalyses({ y, forcedBodyH: Math.max(0, Math.ceil(forcedBodyH)), analyses })
+
+    const finalBase = computeBodyForAnalyses({
+        y,
+        forcedBodyH: Math.max(0, Math.ceil(forcedBodyH)),
+        analyses,
+        baseNeeds,
+    })
 
     if (!finalBase.hasAnyLoop) {
-        const baseNeeds = computeBaseNeeds(branches, baseNeedAt)
-        const widened = ensureMinTotalWidth(baseNeeds, minTotalW)
-        return { widths: widened, analyses, decision: { ...finalBase, bodyH: Math.max(finalBase.bodyH, forcedBodyH) } }
+        const equalized = equalizeBranchWidths(baseNeeds, minTotalW)
+        return {
+            widths: equalized,
+            analyses,
+            decision: { ...finalBase, bodyH: Math.max(finalBase.bodyH, forcedBodyH) },
+        }
     }
 
-    const baseNeeds = computeBaseNeeds(branches, baseNeedAt)
     const solved = computeLoopWidthsAndBodyH({
         baseNeeds,
         analyses,
@@ -1013,21 +1088,25 @@ function stabilizeBranches(params: Readonly<{
         forcedBodyH,
     })
 
-    return { widths: solved.widths, analyses, decision: { ...finalBase, bodyH: solved.bodyH } }
+    return {
+        widths: solved.widths,
+        analyses,
+        decision: { ...finalBase, bodyH: solved.bodyH },
+    }
 }
 
 function computeNonLoopTargets(params: Readonly<{
-    decision: BodyDecision
+    bodyH: number
+    widths: number[]
     analyses: BranchAnalysis[]
 }>): number[] {
-    const { decision, analyses } = params
+    const { bodyH, widths, analyses } = params
+    const h = Math.max(0, Math.ceil(bodyH))
 
-    if (!decision.hasAnyLoop) return analyses.map(() => 0)
-    if (decision.isCompetition) return analyses.map(() => 0)
-
-    return analyses.map((a) => {
-        const isMixed = a.loopCount > 0 && a.nonLoopCount > 0
-        return isMixed ? decision.nonLoopCore : 0
+    return analyses.map((analysis, index) => {
+        const colW = Math.max(0, Math.ceil(widths[index] ?? 0))
+        const loopTotal = Math.max(0, analysis.loopCount * colW)
+        return Math.max(0, h - loopTotal)
     })
 }
 
@@ -1042,8 +1121,8 @@ function layoutIf(node: IfNode, style: StyleConfig, depth: number, forcedWidth?:
     const branchDepth = depth + 1
     const branches = [node.trueBranch, node.falseBranch]
 
-    const initLeftW = Math.max(softMinWidth(style, branchDepth), requiredWidth(node.trueBranch, style, branchDepth))
-    const initRightW = Math.max(softMinWidth(style, branchDepth), requiredWidth(node.falseBranch, style, branchDepth))
+    const initLeftW = Math.max(softMinWidth(style), requiredWidth(node.trueBranch, style, branchDepth))
+    const initRightW = Math.max(softMinWidth(style), requiredWidth(node.falseBranch, style, branchDepth))
 
     const minTotalW = Math.max(conditionW, Math.ceil(forcedWidth ?? 0))
 
@@ -1056,7 +1135,7 @@ function layoutIf(node: IfNode, style: StyleConfig, depth: number, forcedWidth?:
         y,
         forcedBodyH: 0,
         passes: 6,
-        baseNeedAt: (b) => Math.max(softMinWidth(style, branchDepth), requiredWidth(b, style, branchDepth)),
+        baseNeedAt: (b) => Math.max(softMinWidth(style), requiredWidth(b, style, branchDepth)),
     })
 
     const [leftW, rightW] = stabilized.widths
@@ -1065,33 +1144,31 @@ function layoutIf(node: IfNode, style: StyleConfig, depth: number, forcedWidth?:
     let headerH = headerMin
     let bodyH = Math.max(0, Math.ceil(stabilized.decision.bodyH))
 
-    let decisionForNonLoop: BodyDecision = stabilized.decision
-
     if (forcedHeight !== undefined) {
         const forcedTotal = Math.max(0, Math.ceil(forcedHeight))
         const naturalTotal = Math.ceil(headerMin + labelH + bodyH)
 
         if (forcedTotal > naturalTotal) {
             const extra = forcedTotal - naturalTotal
-            const allLoopBranchesHaveNonLoop = stabilized.analyses.every((a) => a.loopCount <= 0 || a.nonLoopCount > 0)
+            const allLoopBranchesHaveNonLoop = stabilized.analyses.every(
+                (a) => a.loopCount <= 0 || a.nonLoopCount > 0 || a.supportCount > 0,
+            )
 
             if (allLoopBranchesHaveNonLoop) {
                 headerH = headerMin
                 bodyH = Math.ceil(bodyH + extra)
-                decisionForNonLoop = {
-                    ...stabilized.decision,
-                    bodyH,
-                    nonLoopCore: Math.ceil(stabilized.decision.nonLoopCore + extra),
-                }
             } else {
                 headerH = Math.ceil(headerMin + extra)
                 bodyH = Math.max(0, Math.ceil(stabilized.decision.bodyH))
-                decisionForNonLoop = stabilized.decision
             }
         }
     }
 
-    const nonLoopTargets = computeNonLoopTargets({ decision: decisionForNonLoop, analyses: stabilized.analyses })
+    const nonLoopTargets = computeNonLoopTargets({
+        bodyH,
+        widths: stabilized.widths,
+        analyses: stabilized.analyses,
+    })
 
     const trueBox = layoutBranchSequence(node.trueBranch, style, branchDepth, leftW, bodyH, nonLoopTargets[0] ?? 0)
     const falseBox = layoutBranchSequence(node.falseBranch, style, branchDepth, rightW, bodyH, nonLoopTargets[1] ?? 0)
@@ -1176,7 +1253,7 @@ function layoutCase(node: CaseNode, style: StyleConfig, depth: number, forcedWid
     })
 
     const initWidths = branches.map((b, i) =>
-        Math.max(softMinWidth(style, branchDepth), requiredWidth(b, style, branchDepth), labelNeeds[i] ?? 0),
+        Math.max(softMinWidth(style), requiredWidth(b, style, branchDepth), labelNeeds[i] ?? 0),
     )
 
     const minTotalW = Math.max(conditionW, Math.ceil(forcedWidth ?? 0))
@@ -1191,7 +1268,7 @@ function layoutCase(node: CaseNode, style: StyleConfig, depth: number, forcedWid
         forcedBodyH: 0,
         passes: 6,
         baseNeedAt: (b, i) =>
-            Math.max(softMinWidth(style, branchDepth), requiredWidth(b, style, branchDepth), labelNeeds[i] ?? 0),
+            Math.max(softMinWidth(style), requiredWidth(b, style, branchDepth), labelNeeds[i] ?? 0),
     })
 
     const bodyMinH = Math.max(0, Math.ceil(stabilized.decision.bodyH))
@@ -1199,7 +1276,6 @@ function layoutCase(node: CaseNode, style: StyleConfig, depth: number, forcedWid
     let headerH = headerMin
     let labelH = labelMin
     let bodyH = bodyMinH
-    let decisionForNonLoop: BodyDecision = stabilized.decision
 
     if (forcedHeight !== undefined) {
         const forcedTotal = Math.max(0, Math.ceil(forcedHeight))
@@ -1207,17 +1283,14 @@ function layoutCase(node: CaseNode, style: StyleConfig, depth: number, forcedWid
 
         if (forcedTotal > naturalTotal) {
             const extra = forcedTotal - naturalTotal
-            const allLoopBranchesHaveNonLoop = stabilized.analyses.every((a) => a.loopCount <= 0 || a.nonLoopCount > 0)
+            const allLoopBranchesHaveNonLoop = stabilized.analyses.every(
+                (a) => a.loopCount <= 0 || a.nonLoopCount > 0 || a.supportCount > 0,
+            )
 
             if (allLoopBranchesHaveNonLoop) {
                 headerH = headerMin
                 labelH = labelMin
                 bodyH = Math.ceil(bodyMinH + extra)
-                decisionForNonLoop = {
-                    ...stabilized.decision,
-                    bodyH,
-                    nonLoopCore: Math.ceil(stabilized.decision.nonLoopCore + extra),
-                }
             } else {
                 const bodyCanAbsorbExtra = branches.every((b) => !containsLoopDeep(b))
                 const resolved = resolveCaseHeights({
@@ -1230,7 +1303,6 @@ function layoutCase(node: CaseNode, style: StyleConfig, depth: number, forcedWid
                 headerH = resolved.headerH
                 labelH = resolved.labelH
                 bodyH = resolved.bodyH
-                decisionForNonLoop = stabilized.decision
             }
         } else {
             const bodyCanAbsorbExtra = branches.every((b) => !containsLoopDeep(b))
@@ -1247,7 +1319,11 @@ function layoutCase(node: CaseNode, style: StyleConfig, depth: number, forcedWid
         }
     }
 
-    const nonLoopTargets = computeNonLoopTargets({ decision: decisionForNonLoop, analyses: stabilized.analyses })
+    const nonLoopTargets = computeNonLoopTargets({
+        bodyH,
+        widths: stabilized.widths,
+        analyses: stabilized.analyses,
+    })
 
     const branchBoxes: LayoutBox[] = []
     let x = 0

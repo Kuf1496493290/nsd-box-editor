@@ -2,10 +2,10 @@
 import type { AppState, BoolLabelMode, LoopKind, NsdNode, SequenceNode, StyleConfig } from '../app/types'
 import { DEFAULT_STYLE } from '../app/constants'
 
-export const PROJECT_SCHEMA_VERSION = 1 as const
+export const PROJECT_SCHEMA_VERSION = 2 as const
 
-type ProjectFileV1 = Readonly<{
-    schemaVersion: 1
+type ProjectFileV2 = Readonly<{
+    schemaVersion: 2
     root: unknown
     style: unknown
     scale?: unknown
@@ -177,8 +177,11 @@ function normalizeStyle(raw: unknown): StyleConfig {
     const lineWidth = r.lineWidth
     if (typeof lineWidth === 'number') next.lineWidth = clampInt(lineWidth, 1, 10)
 
-    const paddingProcess = r.paddingProcess
-    if (typeof paddingProcess === 'number') next.paddingProcess = clampInt(paddingProcess, 0, 80)
+    const paddingProcessY = r.paddingProcessY
+    if (typeof paddingProcessY === 'number') next.paddingProcessY = clampInt(paddingProcessY, 0, 80)
+
+    const paddingProcessX = r.paddingProcessX
+    if (typeof paddingProcessX === 'number') next.paddingProcessX = clampInt(paddingProcessX, 0, 80)
 
     const paddingHeader = r.paddingHeader
     if (typeof paddingHeader === 'number') next.paddingHeader = clampInt(paddingHeader, 0, 80)
@@ -195,7 +198,7 @@ function normalizeStyle(raw: unknown): StyleConfig {
     return next
 }
 
-export function buildProjectFile(state: AppState): ProjectFileV1 {
+export function buildProjectFile(state: AppState): ProjectFileV2 {
     return {
         schemaVersion: PROJECT_SCHEMA_VERSION,
         root: state.root,
@@ -214,8 +217,7 @@ export function parseProjectJsonDetailed(text: string): ProjectParseResult {
 
     if (!isPlainObject(data)) return { ok: false, message: '导入失败：JSON 根对象格式不正确。' }
 
-    const schemaVersionRaw = data.schemaVersion
-    const schemaVersion = schemaVersionRaw === undefined ? 1 : schemaVersionRaw
+    const schemaVersion = data.schemaVersion
     if (schemaVersion !== PROJECT_SCHEMA_VERSION) {
         return { ok: false, message: `导入失败：schemaVersion 不支持（期望 ${PROJECT_SCHEMA_VERSION}）。` }
     }

@@ -3,7 +3,7 @@ import type { AppState, SequenceNode, StyleConfig } from './types'
 import { createProcessNode } from '../model/factory'
 
 /**
- * 初始矩形的宽 x / 高 y —— 代码层固定常量（不随 style 动态变化）
+ * 初始矩形基准宽度常量；实际布局高度以当前 style 计算结果为准
  *
  * 说明：
  * - 这里的 x/y 是“默认风格”的基准值（新建工程时使用）
@@ -14,13 +14,13 @@ export const BASE_BLOCK_HEIGHT = 36
 
 export const DEFAULT_STYLE: StyleConfig = {
     fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", Arial, sans-serif',
-    // 让 baseBlockHeight(style) 恰好算到 36：
-    // lineBoxHeight(15)=18，paddingProcess=9 => 18 + 18 = 36
+    // lineBoxHeight(15)=18，paddingProcessY=9 => 18 + 18 = 36
     fontSize: 15,
     lineWidth: 1,
-    paddingProcess: 9,
-    paddingHeader: 8,
-    paddingBranchLabel: 6,
+    paddingProcessY: 9,
+    paddingProcessX: 7,
+    paddingHeader: 7,
+    paddingBranchLabel: 7,
     loopSidebarWidth: Number(BASE_BLOCK_HEIGHT),
     minBlockWidth: BASE_BLOCK_WIDTH,
 }

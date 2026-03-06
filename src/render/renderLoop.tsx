@@ -167,16 +167,17 @@ export function RenderLoop(props: RenderLoopProps) {
                 </text>
             </g>
 
-            {showHole ? (
-                renderSelectablePlaceholder({
+            {showHole
+                ? renderSelectablePlaceholder({
                     x: holeX,
                     y: holeY,
                     w: holeW,
                     h: holeH,
                     selected: holeSelected,
+                    noDrag: true,
                     onClick: handleHoleClick,
                 })
-            ) : null}
+                : null}
 
             {!showHole && bodyBox ? (
                 <RenderNode

@@ -235,6 +235,7 @@ function renderBranchContent(params: Readonly<{
                             selectedTarget?.kind === 'ifPart' &&
                             selectedTarget.nodeId === ifNodeId &&
                             selectedTarget.part === 'trueContainer',
+                        noDrag: true,
                         onClick: (event) => {
                             event.stopPropagation()
                             onIfPartSelect(ifNodeId, 'trueContainer')
@@ -286,6 +287,7 @@ function renderBranchContent(params: Readonly<{
                             selectedTarget?.kind === 'ifPart' &&
                             selectedTarget.nodeId === ifNodeId &&
                             selectedTarget.part === 'falseContainer',
+                        noDrag: true,
                         onClick: (event) => {
                             event.stopPropagation()
                             onIfPartSelect(ifNodeId, 'falseContainer')

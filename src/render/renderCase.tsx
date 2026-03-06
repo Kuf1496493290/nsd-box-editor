@@ -263,6 +263,7 @@ export function RenderCase(props: RenderCaseProps) {
                                 w: colW,
                                 h: bodyH,
                                 selected: selectedContainer,
+                                noDrag: true,
                                 onClick: (event) => {
                                     event.stopPropagation()
                                     onCasePartSelect(caseNode.id, 'branchContainer', i)

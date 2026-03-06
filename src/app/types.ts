@@ -46,11 +46,14 @@ export interface StyleConfig {
     fontFamily: string
     fontSize: number
     lineWidth: number
-    paddingProcess: number
+    paddingProcessY: number
+    paddingProcessX: number
     paddingHeader: number
     paddingBranchLabel: number
     loopSidebarWidth: number
     minBlockWidth: number
+
+    paddingProcess?: number
 }
 
 export type IfPartKey = 'header' | 'trueLabel' | 'falseLabel' | 'trueContainer' | 'falseContainer'

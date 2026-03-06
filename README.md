@@ -80,6 +80,13 @@ src/
 
 可通过下载导出 JSON，并通过加载恢复项目。
 
+### 样式参数说明
+
+样式配置定义在 `src/app/types.ts` / `src/app/constants.ts`，并可通过项目 JSON 持久化。
+
+- `paddingHeader`：头部条件文本的左右内边距。用于 `If / Case / Loop` 头部文本宽度计算，影响块最小宽度与布局。
+- `paddingBranchLabel`：分支标签文本的左右内边距。用于 `If / Case` 分支标签宽度计算与标签绘制时的边线留白。
+
 ### 开发说明
 
 当前应用入口为 `src/main.tsx`，应用壳在 `src/App.tsx`。
@@ -171,6 +178,13 @@ src/
 Project data is stored as a tree structure, and core types are defined in `src/app/types.ts`.
 
 You can export JSON via download and restore a project by loading it.
+
+### Style Parameters
+
+Style config is defined in `src/app/types.ts` / `src/app/constants.ts` and can be persisted in project JSON.
+
+- `paddingHeader`: Horizontal text padding for header condition text. Used by `If / Case / Loop` width calculation and impacts minimum block width.
+- `paddingBranchLabel`: Horizontal text padding for branch labels. Used by `If / Case` label width calculation and label drawing insets.
 
 ### Development Notes
 
