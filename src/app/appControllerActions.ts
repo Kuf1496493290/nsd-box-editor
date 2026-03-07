@@ -1,3 +1,4 @@
+// FILE: src/app/appControllerActions.ts
 import { useCallback } from 'react'
 import type {
     AppState,
@@ -24,7 +25,7 @@ type EditorFns = Readonly<{
 }>
 
 type StateFns = Readonly<{
-    selectNode: (nodeId: string | null) => void
+    selectNodeWithDefaultTarget: (nodeId: string | null) => void
     selectTarget: (target: SelectionTarget | null) => void
     updateProcessText: (nodeId: string, text: string) => void
     updateIfConditionText: (nodeId: string, text: string) => void
@@ -40,11 +41,11 @@ type InsertActions = Readonly<{
     addCaseAfter: (nodeId: string) => void
     addWhileAfter: (nodeId: string) => void
     addDoWhileAfter: (nodeId: string) => void
-    addProcessAfterEnd: () => void
-    addIfAfterEnd: () => void
-    addCaseAfterEnd: () => void
-    addWhileAfterEnd: () => void
-    addDoWhileAfterEnd: () => void
+    appendProcessToRoot: () => void
+    appendIfToRoot: () => void
+    appendCaseToRoot: () => void
+    appendWhileToRoot: () => void
+    appendDoWhileToRoot: () => void
     addProcessToIfBranchEnd: (nodeId: string, branch: 'true' | 'false') => void
     addIfToIfBranchEnd: (nodeId: string, branch: 'true' | 'false') => void
     addCaseToIfBranchEnd: (nodeId: string, branch: 'true' | 'false') => void
@@ -73,9 +74,7 @@ type InsertActions = Readonly<{
 }>
 
 type MutationFns = Readonly<{
-    moveProcessUp: (nodeId: string) => void
-    moveProcessDown: (nodeId: string) => void
-    deleteProcess: (nodeId: string) => void
+    deleteNodeById: (nodeId: string) => void
     addCaseBranch: (caseId: string, insertAfterBranchIndex?: number) => void
     deleteCaseBranch: (caseId: string, branchIndex: number) => void
 }>
@@ -141,12 +140,12 @@ export function useAppControllerActions(params: Readonly<{
     )
 
     const onProcessSelect = useCallback((nodeId: string) => {
-        stateFns.selectNode(nodeId)
+        stateFns.selectNodeWithDefaultTarget(nodeId)
         editor.closeEditor()
     }, [editor, stateFns])
 
     const onProcessDoubleClick = useCallback((nodeId: string) => {
-        stateFns.selectNode(nodeId)
+        stateFns.selectNodeWithDefaultTarget(nodeId)
         const node = findNodeById(state.root, nodeId)
         if (node?.type !== 'process') return
         editor.openEditor(nodeId, 'process', node.text)
@@ -167,9 +166,12 @@ export function useAppControllerActions(params: Readonly<{
     const onIfLabelDoubleClick = useCallback((nodeId: string, part: 'trueLabel' | 'falseLabel') => {
         stateFns.selectTarget({ kind: 'ifPart', nodeId, part })
         editor.closeEditor()
+
         const node = findNodeById(state.root, nodeId)
         if (node?.type !== 'if') return
+
         stateFns.updateIfBoolLabelMode(nodeId, node.boolLabelMode === 'TF' ? 'YN' : 'TF')
+        stateFns.selectTarget({ kind: 'ifPart', nodeId, part })
     }, [editor, state.root, stateFns])
 
     const onIfPartSelect = useCallback((nodeId: string, part: IfPartKey) => {
@@ -213,7 +215,7 @@ export function useAppControllerActions(params: Readonly<{
     }, [editor, state.root, stateFns])
 
     const onLoopSelect = useCallback((nodeId: string) => {
-        stateFns.selectNode(nodeId)
+        stateFns.selectNodeWithDefaultTarget(nodeId)
         editor.closeEditor()
     }, [editor, stateFns])
 
@@ -223,7 +225,7 @@ export function useAppControllerActions(params: Readonly<{
     }, [editor, stateFns])
 
     const onLoopConditionDoubleClick = useCallback((nodeId: string) => {
-        stateFns.selectNode(nodeId)
+        stateFns.selectNodeWithDefaultTarget(nodeId)
         const node = findNodeById(state.root, nodeId)
         if (node?.type !== 'loop') return
         editor.openEditor(nodeId, 'loopCondition', node.conditionText)
@@ -261,7 +263,7 @@ export function useAppControllerActions(params: Readonly<{
         editor.closeEditor()
     }, [editor, stateFns])
 
-    const onInsertProcessAfter = useCallback((nodeId: string) => {
+    const onInsertProcessAtSelection = useCallback((nodeId: string) => {
         insertByTarget(nodeId, state.selectedTarget, {
             insertAfter: insertActions.addProcessAfter,
             prependToIfBranch: insertActions.prependProcessInIfBranch,
@@ -272,7 +274,7 @@ export function useAppControllerActions(params: Readonly<{
         })
     }, [insertActions, state.selectedTarget])
 
-    const onInsertIfAfter = useCallback((nodeId: string) => {
+    const onInsertIfAtSelection = useCallback((nodeId: string) => {
         insertByTarget(nodeId, state.selectedTarget, {
             insertAfter: insertActions.addIfAfter,
             prependToIfBranch: insertActions.prependIfInIfBranch,
@@ -283,7 +285,7 @@ export function useAppControllerActions(params: Readonly<{
         })
     }, [insertActions, state.selectedTarget])
 
-    const onInsertCaseAfter = useCallback((nodeId: string) => {
+    const onInsertCaseAtSelection = useCallback((nodeId: string) => {
         insertByTarget(nodeId, state.selectedTarget, {
             insertAfter: insertActions.addCaseAfter,
             prependToIfBranch: insertActions.prependCaseInIfBranch,
@@ -294,7 +296,7 @@ export function useAppControllerActions(params: Readonly<{
         })
     }, [insertActions, state.selectedTarget])
 
-    const onInsertWhileAfter = useCallback((nodeId: string) => {
+    const onInsertWhileAtSelection = useCallback((nodeId: string) => {
         insertByTarget(nodeId, state.selectedTarget, {
             insertAfter: insertActions.addWhileAfter,
             prependToIfBranch: insertActions.prependWhileInIfBranch,
@@ -305,7 +307,7 @@ export function useAppControllerActions(params: Readonly<{
         })
     }, [insertActions, state.selectedTarget])
 
-    const onInsertDoWhileAfter = useCallback((nodeId: string) => {
+    const onInsertDoWhileAtSelection = useCallback((nodeId: string) => {
         insertByTarget(nodeId, state.selectedTarget, {
             insertAfter: insertActions.addDoWhileAfter,
             prependToIfBranch: insertActions.prependDoWhileInIfBranch,
@@ -315,21 +317,6 @@ export function useAppControllerActions(params: Readonly<{
             prependToLoopBody: insertActions.prependDoWhileInLoopBody,
         })
     }, [insertActions, state.selectedTarget])
-
-    const onMoveProcessUp = useCallback((nodeId: string) => {
-        editor.closeEditor()
-        mutationFns.moveProcessUp(nodeId)
-    }, [editor, mutationFns])
-
-    const onMoveProcessDown = useCallback((nodeId: string) => {
-        editor.closeEditor()
-        mutationFns.moveProcessDown(nodeId)
-    }, [editor, mutationFns])
-
-    const onDeleteProcess = useCallback((nodeId: string) => {
-        editor.closeEditor()
-        mutationFns.deleteProcess(nodeId)
-    }, [editor, mutationFns])
 
     const onAddCaseBranch = useCallback((caseId: string, insertAfterBranchIndex?: number) => {
         performAddCaseBranch(caseId, insertAfterBranchIndex)
@@ -351,12 +338,12 @@ export function useAppControllerActions(params: Readonly<{
             return
         }
 
-        mutationFns.deleteProcess(node.id)
+        mutationFns.deleteNodeById(node.id)
     }, [canDeleteSelected, editor, mutationFns, selectedNode, state.selectedTarget])
 
-    const onToolbarAddProcess = useCallback(() => {
+    const onToolbarInsertProcess = useCallback(() => {
         insertFromToolbarTarget(state.selectedTarget, {
-            addAtEnd: insertActions.addProcessAfterEnd,
+            addAtEnd: insertActions.appendProcessToRoot,
             insertAfter: insertActions.addProcessAfter,
             prependToIfBranch: insertActions.prependProcessInIfBranch,
             appendToIfBranchEnd: insertActions.addProcessToIfBranchEnd,
@@ -366,9 +353,9 @@ export function useAppControllerActions(params: Readonly<{
         })
     }, [insertActions, state.selectedTarget])
 
-    const onToolbarAddIf = useCallback(() => {
+    const onToolbarInsertIf = useCallback(() => {
         insertFromToolbarTarget(state.selectedTarget, {
-            addAtEnd: insertActions.addIfAfterEnd,
+            addAtEnd: insertActions.appendIfToRoot,
             insertAfter: insertActions.addIfAfter,
             prependToIfBranch: insertActions.prependIfInIfBranch,
             appendToIfBranchEnd: insertActions.addIfToIfBranchEnd,
@@ -378,9 +365,9 @@ export function useAppControllerActions(params: Readonly<{
         })
     }, [insertActions, state.selectedTarget])
 
-    const onToolbarAddCase = useCallback(() => {
+    const onToolbarInsertCase = useCallback(() => {
         insertFromToolbarTarget(state.selectedTarget, {
-            addAtEnd: insertActions.addCaseAfterEnd,
+            addAtEnd: insertActions.appendCaseToRoot,
             insertAfter: insertActions.addCaseAfter,
             prependToIfBranch: insertActions.prependCaseInIfBranch,
             appendToIfBranchEnd: insertActions.addCaseToIfBranchEnd,
@@ -390,9 +377,9 @@ export function useAppControllerActions(params: Readonly<{
         })
     }, [insertActions, state.selectedTarget])
 
-    const onToolbarAddWhile = useCallback(() => {
+    const onToolbarInsertWhile = useCallback(() => {
         insertFromToolbarTarget(state.selectedTarget, {
-            addAtEnd: insertActions.addWhileAfterEnd,
+            addAtEnd: insertActions.appendWhileToRoot,
             insertAfter: insertActions.addWhileAfter,
             prependToIfBranch: insertActions.prependWhileInIfBranch,
             appendToIfBranchEnd: insertActions.addWhileToIfBranchEnd,
@@ -402,9 +389,9 @@ export function useAppControllerActions(params: Readonly<{
         })
     }, [insertActions, state.selectedTarget])
 
-    const onToolbarAddDoWhile = useCallback(() => {
+    const onToolbarInsertDoWhile = useCallback(() => {
         insertFromToolbarTarget(state.selectedTarget, {
-            addAtEnd: insertActions.addDoWhileAfterEnd,
+            addAtEnd: insertActions.appendDoWhileToRoot,
             insertAfter: insertActions.addDoWhileAfter,
             prependToIfBranch: insertActions.prependDoWhileInIfBranch,
             appendToIfBranchEnd: insertActions.addDoWhileToIfBranchEnd,
@@ -470,21 +457,18 @@ export function useAppControllerActions(params: Readonly<{
         onLoopHoleSelect,
         onEditorConfirm,
         onCanvasBlankClick,
-        onInsertProcessAfter,
-        onInsertIfAfter,
-        onInsertCaseAfter,
-        onInsertWhileAfter,
-        onInsertDoWhileAfter,
-        onMoveProcessUp,
-        onMoveProcessDown,
-        onDeleteProcess,
+        onInsertProcessAtSelection,
+        onInsertIfAtSelection,
+        onInsertCaseAtSelection,
+        onInsertWhileAtSelection,
+        onInsertDoWhileAtSelection,
         onDeleteSelected,
         onAddCaseBranch,
-        onToolbarAddProcess,
-        onToolbarAddIf,
-        onToolbarAddCase,
-        onToolbarAddWhile,
-        onToolbarAddDoWhile,
+        onToolbarInsertProcess,
+        onToolbarInsertIf,
+        onToolbarInsertCase,
+        onToolbarInsertWhile,
+        onToolbarInsertDoWhile,
         onToolbarAddCaseBranch,
         onKeyboardEnter,
         onKeyboardTab,

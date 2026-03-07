@@ -35,7 +35,7 @@ function isCaseConditionTarget(target: SelectionTarget): boolean {
     return target.kind === 'node' || (target.kind === 'casePart' && target.part === 'header')
 }
 
-export function getCaseBranchAddRequest(
+export function resolveCaseBranchAddRequest(
     target: SelectionTarget | null,
 ): Readonly<{ nodeId: string; insertAfterBranchIndex?: number }> | null {
     if (target?.kind !== 'casePart') return null

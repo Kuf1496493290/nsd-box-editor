@@ -9,7 +9,6 @@ import {
     polygonPath,
     renderSelectableLabel,
     renderSelectablePlaceholder,
-    renderSelectionOutline,
 } from './renderCommon'
 
 type RenderCaseProps = Readonly<{
@@ -35,15 +34,11 @@ type RenderCaseProps = Readonly<{
     onLoopConditionDoubleClick: (nodeId: string) => void
     onLoopHoleSelect: (nodeId: string) => void
 
-    onInsertProcessAfter: (nodeId: string) => void
-    onInsertIfAfter: (nodeId: string) => void
-    onInsertCaseAfter: (nodeId: string) => void
-    onInsertWhileAfter: (nodeId: string) => void
-    onInsertDoWhileAfter: (nodeId: string) => void
-
-    onMoveProcessUp: (nodeId: string) => void
-    onMoveProcessDown: (nodeId: string) => void
-    onDeleteProcess: (nodeId: string) => void
+    onInsertProcessAtSelection: (nodeId: string) => void
+    onInsertIfAtSelection: (nodeId: string) => void
+    onInsertCaseAtSelection: (nodeId: string) => void
+    onInsertWhileAtSelection: (nodeId: string) => void
+    onInsertDoWhileAtSelection: (nodeId: string) => void
 
     onDeleteSelected?: () => void
     onAddCaseBranch?: (caseId: string) => void
@@ -63,14 +58,9 @@ function getSelectedCasePart(selectedTarget: SelectionTarget | null, caseId: str
     return { part: selectedTarget.part, branchIndex: selectedTarget.branchIndex }
 }
 
-function labelKey(caseId: string, branchId: string | undefined, index: number): string {
-    if (branchId) return `label-${branchId}`
-    return `label-${caseId}-${index}`
-}
-
-function placeholderKey(caseId: string, branchId: string | undefined, index: number): string {
-    if (branchId) return `ph-${branchId}`
-    return `ph-${caseId}-${index}`
+function columnKey(caseId: string, branchId: string | undefined, index: number): string {
+    if (branchId) return `col-${branchId}`
+    return `col-${caseId}-${index}`
 }
 
 export function RenderCase(props: RenderCaseProps) {
@@ -92,14 +82,11 @@ export function RenderCase(props: RenderCaseProps) {
         onLoopSelect,
         onLoopConditionDoubleClick,
         onLoopHoleSelect,
-        onInsertProcessAfter,
-        onInsertIfAfter,
-        onInsertCaseAfter,
-        onInsertWhileAfter,
-        onInsertDoWhileAfter,
-        onMoveProcessUp,
-        onMoveProcessDown,
-        onDeleteProcess,
+        onInsertProcessAtSelection,
+        onInsertIfAtSelection,
+        onInsertCaseAtSelection,
+        onInsertWhileAtSelection,
+        onInsertDoWhileAtSelection,
         onDeleteSelected,
         onAddCaseBranch,
     } = props
@@ -109,7 +96,6 @@ export function RenderCase(props: RenderCaseProps) {
     const caseNode: CaseNode = node
 
     const selected = getSelectedCasePart(selectedTarget, caseNode.id)
-    const wholeCaseSelected = selected.part === 'header'
 
     const yMin = baseBlockHeight(style)
     const headerH = Math.max(yMin, Math.ceil(box.meta?.headerH ?? yMin))
@@ -170,8 +156,6 @@ export function RenderCase(props: RenderCaseProps) {
         <g>
             <rect x={x0} y={y0} width={w} height={headerH + labelH} fill="white" stroke="black" strokeWidth={style.lineWidth} />
 
-            {renderSelectionOutline(wholeCaseSelected, box)}
-
             <line x1={x0} y1={y0 + headerH} x2={x0 + w} y2={y0 + headerH} stroke="black" strokeWidth={style.lineWidth} />
 
             <line x1={x0} y1={y0} x2={x0 + triBase} y2={y0 + headerH} stroke="black" strokeWidth={style.lineWidth} />
@@ -196,7 +180,6 @@ export function RenderCase(props: RenderCaseProps) {
             <g onClick={handleHeaderClick} onDoubleClick={handleHeaderDoubleClick} style={{ cursor: 'pointer' }} aria-label="编辑 CASE 条件">
                 <rect x={x0} y={y0} width={w} height={headerH} fill="transparent" />
                 <path d={polygonPath(trapPoints)} fill="transparent" />
-                {selected.part === 'header' ? dashedPolygonOutline(trapPoints) : null}
 
                 <text
                     x={headerTextX}
@@ -214,50 +197,52 @@ export function RenderCase(props: RenderCaseProps) {
 
             {Array.from({ length: branchCount }, (_, i) => {
                 const branch = caseNode.branches[i]
+                const branchBox = branchBoxes[i]
                 const { colX, colW } = cols[i]
                 const selectedLabel = selected.part === 'branchLabel' && selected.branchIndex === i
+                const selectedContainer = selected.part === 'branchContainer' && selected.branchIndex === i
                 const label = labels[i] ?? String(i + 1)
+
+                const contentBox = branchBox
+                    ? ({
+                        ...branchBox,
+                        y: 0,
+                    } satisfies LayoutBox)
+                    : null
 
                 return (
                     <g
-                        data-drag-case-id={caseNode.id}
-                        data-drag-case-branch-index={String(i)}
-                        key={labelKey(caseNode.id, branch?.id, i)}
-                        onDoubleClick={(event) => {
-                            event.stopPropagation()
-                            onCaseBranchLabelDoubleClick(caseNode.id, i)
-                        }}
+                        key={columnKey(caseNode.id, branch?.id, i)}
+                        data-drag-case-column-id={caseNode.id}
+                        data-drag-case-column-index={String(i)}
                     >
-                        {renderSelectableLabel({
-                            x: colX,
-                            y: y0 + headerH,
-                            w: colW,
-                            h: labelH,
-                            textX: colX + colW / 2,
-                            textY: labelTextY,
-                            text: label,
-                            style,
-                            selected: selectedLabel,
-                            onClick: (event) => {
+                        <g
+                            data-drag-case-id={caseNode.id}
+                            data-drag-case-branch-index={String(i)}
+                            onDoubleClick={(event) => {
                                 event.stopPropagation()
-                                onCasePartSelect(caseNode.id, 'branchLabel', i)
-                            },
-                        })}
-                    </g>
-                )
-            })}
+                                onCaseBranchLabelDoubleClick(caseNode.id, i)
+                            }}
+                        >
+                            {renderSelectableLabel({
+                                x: colX,
+                                y: y0 + headerH,
+                                w: colW,
+                                h: labelH,
+                                textX: colX + colW / 2,
+                                textY: labelTextY,
+                                text: label,
+                                style,
+                                selected: selectedLabel,
+                                onClick: (event) => {
+                                    event.stopPropagation()
+                                    onCasePartSelect(caseNode.id, 'branchLabel', i)
+                                },
+                            })}
+                        </g>
 
-            {bodyH > 0
-                ? counts.map((c, i) => {
-                    if (c > 0) return null
-
-                    const branch = caseNode.branches[i]
-                    const { colX, colW } = cols[i]
-                    const selectedContainer = selected.part === 'branchContainer' && selected.branchIndex === i
-
-                    return (
-                        <g key={placeholderKey(caseNode.id, branch?.id, i)}>
-                            {renderSelectablePlaceholder({
+                        {bodyH > 0 && counts[i] === 0
+                            ? renderSelectablePlaceholder({
                                 x: colX,
                                 y: bodyTopY,
                                 w: colW,
@@ -268,55 +253,55 @@ export function RenderCase(props: RenderCaseProps) {
                                     event.stopPropagation()
                                     onCasePartSelect(caseNode.id, 'branchContainer', i)
                                 },
-                            })}
-                        </g>
-                    )
+                            })
+                            : null}
+
+                        {bodyH > 0 && contentBox ? (
+                            <g transform={`translate(${x0}, ${bodyTopY})`}>
+                                <RenderNode
+                                    box={contentBox}
+                                    style={style}
+                                    selectedNodeId={selectedNodeId}
+                                    selectedTarget={selectedTarget}
+                                    onProcessSelect={onProcessSelect}
+                                    onProcessDoubleClick={onProcessDoubleClick}
+                                    onIfHeaderSelect={onIfHeaderSelect}
+                                    onIfHeaderDoubleClick={onIfHeaderDoubleClick}
+                                    onIfPartSelect={onIfPartSelect}
+                                    onIfLabelDoubleClick={onIfLabelDoubleClick}
+                                    onCaseHeaderSelect={onCaseHeaderSelect}
+                                    onCaseHeaderDoubleClick={onCaseHeaderDoubleClick}
+                                    onCasePartSelect={onCasePartSelect}
+                                    onCaseBranchLabelDoubleClick={onCaseBranchLabelDoubleClick}
+                                    onLoopSelect={onLoopSelect}
+                                    onLoopConditionDoubleClick={onLoopConditionDoubleClick}
+                                    onLoopHoleSelect={onLoopHoleSelect}
+                                    onInsertProcessAtSelection={onInsertProcessAtSelection}
+                                    onInsertIfAtSelection={onInsertIfAtSelection}
+                                    onInsertCaseAtSelection={onInsertCaseAtSelection}
+                                    onInsertWhileAtSelection={onInsertWhileAtSelection}
+                                    onInsertDoWhileAtSelection={onInsertDoWhileAtSelection}
+                                    onDeleteSelected={onDeleteSelected}
+                                    onAddCaseBranch={onAddCaseBranch}
+                                />
+                            </g>
+                        ) : null}
+                    </g>
+                )
+            })}
+
+            {selected.part === 'branchLabel'
+                ? Array.from({ length: branchCount }, (_, i) => {
+                    if (selected.branchIndex !== i) return null
+                    const { colX, colW } = cols[i]
+                    return dashedPolygonOutline([
+                        [colX + 3, y0 + headerH + 3],
+                        [colX + colW - 3, y0 + headerH + 3],
+                        [colX + colW - 3, y0 + headerH + labelH - 3],
+                        [colX + 3, y0 + headerH + labelH - 3],
+                    ] as const)
                 })
                 : null}
-
-            {bodyH > 0 ? (
-                <g transform={`translate(${x0}, ${bodyTopY})`}>
-                    {branchBoxes.map((branchBox) => {
-                        const b = {
-                            ...branchBox,
-                            y: 0,
-                        } satisfies LayoutBox
-
-                        return (
-                            <RenderNode
-                                key={b.id}
-                                box={b}
-                                style={style}
-                                selectedNodeId={selectedNodeId}
-                                selectedTarget={selectedTarget}
-                                onProcessSelect={onProcessSelect}
-                                onProcessDoubleClick={onProcessDoubleClick}
-                                onIfHeaderSelect={onIfHeaderSelect}
-                                onIfHeaderDoubleClick={onIfHeaderDoubleClick}
-                                onIfPartSelect={onIfPartSelect}
-                                onIfLabelDoubleClick={onIfLabelDoubleClick}
-                                onCaseHeaderSelect={onCaseHeaderSelect}
-                                onCaseHeaderDoubleClick={onCaseHeaderDoubleClick}
-                                onCasePartSelect={onCasePartSelect}
-                                onCaseBranchLabelDoubleClick={onCaseBranchLabelDoubleClick}
-                                onLoopSelect={onLoopSelect}
-                                onLoopConditionDoubleClick={onLoopConditionDoubleClick}
-                                onLoopHoleSelect={onLoopHoleSelect}
-                                onInsertProcessAfter={onInsertProcessAfter}
-                                onInsertIfAfter={onInsertIfAfter}
-                                onInsertCaseAfter={onInsertCaseAfter}
-                                onInsertWhileAfter={onInsertWhileAfter}
-                                onInsertDoWhileAfter={onInsertDoWhileAfter}
-                                onMoveProcessUp={onMoveProcessUp}
-                                onMoveProcessDown={onMoveProcessDown}
-                                onDeleteProcess={onDeleteProcess}
-                                onDeleteSelected={onDeleteSelected}
-                                onAddCaseBranch={onAddCaseBranch}
-                            />
-                        )
-                    })}
-                </g>
-            ) : null}
         </g>
     )
 }

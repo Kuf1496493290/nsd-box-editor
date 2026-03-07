@@ -46,22 +46,19 @@ export default function App() {
         onLoopConditionDoubleClick,
         onLoopHoleSelect,
         onCanvasBlankClick,
-        onInsertProcessAfter,
-        onInsertIfAfter,
-        onInsertCaseAfter,
-        onInsertWhileAfter,
-        onInsertDoWhileAfter,
-        onMoveProcessUp,
-        onMoveProcessDown,
-        onDeleteProcess,
+        onInsertProcessAtSelection,
+        onInsertIfAtSelection,
+        onInsertCaseAtSelection,
+        onInsertWhileAtSelection,
+        onInsertDoWhileAtSelection,
         onDeleteSelected,
         onAddCaseBranch,
         onMoveByDrag,
-        onToolbarAddProcess,
-        onToolbarAddIf,
-        onToolbarAddCase,
-        onToolbarAddWhile,
-        onToolbarAddDoWhile,
+        onToolbarInsertProcess,
+        onToolbarInsertIf,
+        onToolbarInsertCase,
+        onToolbarInsertWhile,
+        onToolbarInsertDoWhile,
         onToolbarAddCaseBranch,
         onEditorConfirm,
         closeEditor,
@@ -75,11 +72,11 @@ export default function App() {
                     canRedo={canRedo}
                     onUndo={performUndo}
                     onRedo={performRedo}
-                    onAddProcess={onToolbarAddProcess}
-                    onAddIf={onToolbarAddIf}
-                    onAddCase={onToolbarAddCase}
-                    onAddWhile={onToolbarAddWhile}
-                    onAddDoWhile={onToolbarAddDoWhile}
+                    onInsertProcess={onToolbarInsertProcess}
+                    onInsertIf={onToolbarInsertIf}
+                    onInsertCase={onToolbarInsertCase}
+                    onInsertWhile={onToolbarInsertWhile}
+                    onInsertDoWhile={onToolbarInsertDoWhile}
                     canAddCaseBranch={canAddCaseBranch}
                     onAddCaseBranch={onToolbarAddCaseBranch}
                     canDeleteSelected={canDeleteSelected}
@@ -109,27 +106,27 @@ export default function App() {
                 <div className="hint">
                     当前已支持：
                     <br />
-                    1. 添加步骤 / IF / CASE / WHILE / DO-WHILE（工具栏按选中语义插入；无选中时末尾追加）
+                    1. 添加步骤 / IF / CASE / WHILE / DO-WHILE（工具栏与悬浮 + 都按当前选中语义插入；无选中时追加到根末尾）
                     <br />
-                    2. 单击选中节点（步骤 / IF / CASE / LOOP）
+                    2. 单击可选中：步骤、IF 整体 / 标签 / 空分支容器、CASE 整体 / 分支标签 / 空分支容器、LOOP 整体 / 空洞
                     <br />
-                    3. 双击步骤编辑文字；双击 LOOP 条件编辑文字
+                    3. 双击可编辑：步骤文本、IF 条件、CASE 条件、CASE 分支标签、LOOP 条件
                     <br />
-                    4. 双击 IF/CASE 头部编辑条件；双击 CASE 分支标签编辑分支标签；双击 IF 的 T/F 切换为 Y/N
+                    4. 双击 IF 的 T/F 可切换为 Y/N；再次双击可切回；切换后仍保持选中当前标签
                     <br />
-                    5. LOOP：点击 L 本体=同级操作；点击 L 内部空洞=块内操作（空洞选中不可删除）
+                    5. 删除：Delete 或悬浮 ×；IF 标签=删整个 IF；CASE 分支标签=删当前分支（仅剩 2 个分支时删整个 CASE）；空容器与 LOOP 空洞不可删
                     <br />
-                    6. 导出 PNG/SVG、导出 JSON/TXT、导入 JSON/TXT（JSON/TXT 均为工程文件内容）
+                    6. CASE 增加分支：选中条件框时末尾追加；选中分支标签时插入到当前右侧；新增后自动选中新分支
                     <br />
-                    7. 选中节点时显示悬浮按钮：+（插入菜单） / ×（删除）
+                    7. 拖拽：普通节点可在同一 owner 范围内插入式重排；IF 左右结果列仅可通过 T/F 或 Y/N 标签节点拖拽交换；CASE 分支结果列仅可通过分支标签节点拖拽横向重排；拖拽后自动修正选中
                     <br />
-                    8. IF 标签区可选中（Delete=删整个 IF）；CASE 分支标签可选中（Delete=删当前分支及其内容；增加分支=在当前右侧插入）；空容器选中不可删除
+                    8. 快捷键：Undo=Ctrl+Z，Redo=Ctrl+Shift+Z / Ctrl+Y，Delete=删除当前选中
                     <br />
-                    9. 撤销/重做：Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y
+                    9. Enter：对当前可编辑目标进入编辑；Tab：当 CASE 条件框或分支标签被选中时增加分支
                     <br />
-                    10. 删除：Delete（空洞/空容器选中时无效）
+                    10. 导出 PNG/SVG、导出 JSON/TXT、导入 JSON/TXT（导入后恢复 root / style / scale）
                     <br />
-                    11. CASE 增加分支：选中条件框时末尾追加；选中分支标签时在当前右侧插入；新增后自动选中新分支
+                    11. 左侧滑块可调盒图大小倍率 0.5 ~ 2.0；画布居中显示，并为悬浮菜单预留安全边距
                 </div>
 
                 <div className="field" style={{ marginTop: 12 }}>
@@ -169,14 +166,11 @@ export default function App() {
                         onLoopConditionDoubleClick={onLoopConditionDoubleClick}
                         onLoopHoleSelect={onLoopHoleSelect}
                         onCanvasBlankClick={onCanvasBlankClick}
-                        onInsertProcessAfter={onInsertProcessAfter}
-                        onInsertIfAfter={onInsertIfAfter}
-                        onInsertCaseAfter={onInsertCaseAfter}
-                        onInsertWhileAfter={onInsertWhileAfter}
-                        onInsertDoWhileAfter={onInsertDoWhileAfter}
-                        onMoveProcessUp={onMoveProcessUp}
-                        onMoveProcessDown={onMoveProcessDown}
-                        onDeleteProcess={onDeleteProcess}
+                        onInsertProcessAtSelection={onInsertProcessAtSelection}
+                        onInsertIfAtSelection={onInsertIfAtSelection}
+                        onInsertCaseAtSelection={onInsertCaseAtSelection}
+                        onInsertWhileAtSelection={onInsertWhileAtSelection}
+                        onInsertDoWhileAtSelection={onInsertDoWhileAtSelection}
                         onDeleteSelected={onDeleteSelected}
                         onAddCaseBranch={onAddCaseBranch}
                         onMoveByDrag={onMoveByDrag}

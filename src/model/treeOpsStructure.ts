@@ -1,3 +1,4 @@
+// FILE: src/model/treeOpsStructure.ts
 import type { NsdNode, SelectionTarget, SequenceNode } from '../app/types'
 
 export type UpdateResult = Readonly<{
@@ -399,29 +400,6 @@ export function insertNodeAfter(root: SequenceNode, nodeId: string, createNode: 
             },
             changed: true,
             selectedNodeId: newNode.id,
-        }
-    })
-}
-
-export function moveNodeByOffset(root: SequenceNode, nodeId: string, offset: -1 | 1): UpdateResult {
-    return updateWithinSequence(root, (sequence) => {
-        const index = sequence.children.findIndex((node) => node.id === nodeId)
-        if (offset < 0 && index <= 0) return null
-        if (offset > 0 && (index < 0 || index >= sequence.children.length - 1)) return null
-
-        const nextChildren = cloneChildren(sequence)
-        const current = nextChildren[index]
-        const swapIndex = index + offset
-        nextChildren[index] = nextChildren[swapIndex]
-        nextChildren[swapIndex] = current
-
-        return {
-            root: {
-                ...sequence,
-                children: nextChildren,
-            },
-            changed: true,
-            selectedNodeId: nodeId,
         }
     })
 }

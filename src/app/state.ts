@@ -69,7 +69,7 @@ export function useAppState() {
         })
     }
 
-    function selectNode(nodeId: string | null) {
+    function selectNodeWithDefaultTarget(nodeId: string | null) {
         setHistory((prev) => {
             const present = prev.present
             const target = defaultTargetForNode(present.root, nodeId)
@@ -122,7 +122,7 @@ export function useAppState() {
         replaceState,
         updateScale,
         ...treeActions,
-        selectNode,
+        selectNodeWithDefaultTarget,
         selectTarget,
     }
 }

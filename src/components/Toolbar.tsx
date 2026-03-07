@@ -5,11 +5,11 @@ type ToolbarProps = Readonly<{
     onUndo: () => void
     onRedo: () => void
 
-    onAddProcess: () => void
-    onAddIf: () => void
-    onAddCase: () => void
-    onAddWhile: () => void
-    onAddDoWhile: () => void
+    onInsertProcess: () => void
+    onInsertIf: () => void
+    onInsertCase: () => void
+    onInsertWhile: () => void
+    onInsertDoWhile: () => void
 
     canAddCaseBranch: boolean
     onAddCaseBranch: () => void
@@ -36,19 +36,19 @@ export function Toolbar(props: ToolbarProps) {
                 重做
             </button>
 
-            <button className="button" onClick={props.onAddProcess}>
+            <button className="button" onClick={props.onInsertProcess}>
                 添加步骤
             </button>
-            <button className="button" onClick={props.onAddIf}>
+            <button className="button" onClick={props.onInsertIf}>
                 添加 IF
             </button>
-            <button className="button" onClick={props.onAddCase}>
+            <button className="button" onClick={props.onInsertCase}>
                 添加 CASE
             </button>
-            <button className="button" onClick={props.onAddWhile}>
+            <button className="button" onClick={props.onInsertWhile}>
                 添加 WHILE
             </button>
-            <button className="button" onClick={props.onAddDoWhile}>
+            <button className="button" onClick={props.onInsertDoWhile}>
                 添加 DO-WHILE
             </button>
 

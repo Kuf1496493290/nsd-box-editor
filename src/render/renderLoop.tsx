@@ -3,7 +3,7 @@ import type { MouseEvent as ReactMouseEvent } from 'react'
 import type { CasePartKey, IfPartKey, SelectionTarget, StyleConfig } from '../app/types'
 import type { LayoutBox } from '../layout/layoutTypes'
 import { RenderNode } from './renderNode'
-import { loopArmSize, renderSelectablePlaceholder, renderSelectionOutline } from './renderCommon'
+import { loopArmSize, renderSelectablePlaceholder } from './renderCommon'
 
 type RenderLoopProps = Readonly<{
     box: LayoutBox
@@ -28,15 +28,11 @@ type RenderLoopProps = Readonly<{
     onLoopConditionDoubleClick: (nodeId: string) => void
     onLoopHoleSelect: (nodeId: string) => void
 
-    onInsertProcessAfter: (nodeId: string) => void
-    onInsertIfAfter: (nodeId: string) => void
-    onInsertCaseAfter: (nodeId: string) => void
-    onInsertWhileAfter: (nodeId: string) => void
-    onInsertDoWhileAfter: (nodeId: string) => void
-
-    onMoveProcessUp: (nodeId: string) => void
-    onMoveProcessDown: (nodeId: string) => void
-    onDeleteProcess: (nodeId: string) => void
+    onInsertProcessAtSelection: (nodeId: string) => void
+    onInsertIfAtSelection: (nodeId: string) => void
+    onInsertCaseAtSelection: (nodeId: string) => void
+    onInsertWhileAtSelection: (nodeId: string) => void
+    onInsertDoWhileAtSelection: (nodeId: string) => void
 
     onDeleteSelected?: () => void
     onAddCaseBranch?: (caseId: string) => void
@@ -72,14 +68,11 @@ export function RenderLoop(props: RenderLoopProps) {
         onLoopSelect,
         onLoopConditionDoubleClick,
         onLoopHoleSelect,
-        onInsertProcessAfter,
-        onInsertIfAfter,
-        onInsertCaseAfter,
-        onInsertWhileAfter,
-        onInsertDoWhileAfter,
-        onMoveProcessUp,
-        onMoveProcessDown,
-        onDeleteProcess,
+        onInsertProcessAtSelection,
+        onInsertIfAtSelection,
+        onInsertCaseAtSelection,
+        onInsertWhileAtSelection,
+        onInsertDoWhileAtSelection,
         onDeleteSelected,
         onAddCaseBranch,
     } = props
@@ -101,9 +94,6 @@ export function RenderLoop(props: RenderLoopProps) {
 
     const holeSelected =
         selectedTarget?.kind === 'loopPart' && selectedTarget.nodeId === node.id && selectedTarget.part === 'hole'
-
-    const loopSelected =
-        selectedTarget?.kind !== 'loopPart' && (selectedTarget?.nodeId === node.id || selectedNodeId === node.id)
 
     const hasBodyChildren = node.body.children.length > 0
     const showHole = !hasBodyChildren
@@ -138,8 +128,6 @@ export function RenderLoop(props: RenderLoopProps) {
     return (
         <g transform={`translate(${box.x}, ${box.y})`}>
             <path d={pathD} fill="white" stroke="black" strokeWidth={style.lineWidth} />
-
-            {renderSelectionOutline(loopSelected, { ...box, x: 0, y: 0, width: W, height: H })}
 
             <g onClick={handleLoopClick} style={{ cursor: 'pointer' }} aria-label="选择 LOOP">
                 <rect x={verticalX} y={0} width={verticalW} height={H} fill="transparent" />
@@ -198,14 +186,11 @@ export function RenderLoop(props: RenderLoopProps) {
                     onLoopSelect={onLoopSelect}
                     onLoopConditionDoubleClick={onLoopConditionDoubleClick}
                     onLoopHoleSelect={onLoopHoleSelect}
-                    onInsertProcessAfter={onInsertProcessAfter}
-                    onInsertIfAfter={onInsertIfAfter}
-                    onInsertCaseAfter={onInsertCaseAfter}
-                    onInsertWhileAfter={onInsertWhileAfter}
-                    onInsertDoWhileAfter={onInsertDoWhileAfter}
-                    onMoveProcessUp={onMoveProcessUp}
-                    onMoveProcessDown={onMoveProcessDown}
-                    onDeleteProcess={onDeleteProcess}
+                    onInsertProcessAtSelection={onInsertProcessAtSelection}
+                    onInsertIfAtSelection={onInsertIfAtSelection}
+                    onInsertCaseAtSelection={onInsertCaseAtSelection}
+                    onInsertWhileAtSelection={onInsertWhileAtSelection}
+                    onInsertDoWhileAtSelection={onInsertDoWhileAtSelection}
                     onDeleteSelected={onDeleteSelected}
                     onAddCaseBranch={onAddCaseBranch}
                 />

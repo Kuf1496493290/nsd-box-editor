@@ -29,15 +29,11 @@ type RenderIfProps = Readonly<{
     onLoopSelect: (nodeId: string) => void
     onLoopConditionDoubleClick: (nodeId: string) => void
     onLoopHoleSelect: (nodeId: string) => void
-    onInsertProcessAfter: (nodeId: string) => void
-    onInsertIfAfter: (nodeId: string) => void
-    onInsertCaseAfter: (nodeId: string) => void
-    onInsertWhileAfter: (nodeId: string) => void
-    onInsertDoWhileAfter: (nodeId: string) => void
-    onMoveProcessUp: (nodeId: string) => void
-    onMoveProcessDown: (nodeId: string) => void
-    onDeleteProcess: (nodeId: string) => void
-
+    onInsertProcessAtSelection: (nodeId: string) => void
+    onInsertIfAtSelection: (nodeId: string) => void
+    onInsertCaseAtSelection: (nodeId: string) => void
+    onInsertWhileAtSelection: (nodeId: string) => void
+    onInsertDoWhileAtSelection: (nodeId: string) => void
     onDeleteSelected?: () => void
     onAddCaseBranch?: (caseId: string) => void
 }>
@@ -169,14 +165,11 @@ function renderBranchContent(params: Readonly<{
     onLoopSelect: (nodeId: string) => void
     onLoopConditionDoubleClick: (nodeId: string) => void
     onLoopHoleSelect: (nodeId: string) => void
-    onInsertProcessAfter: (nodeId: string) => void
-    onInsertIfAfter: (nodeId: string) => void
-    onInsertCaseAfter: (nodeId: string) => void
-    onInsertWhileAfter: (nodeId: string) => void
-    onInsertDoWhileAfter: (nodeId: string) => void
-    onMoveProcessUp: (nodeId: string) => void
-    onMoveProcessDown: (nodeId: string) => void
-    onDeleteProcess: (nodeId: string) => void
+    onInsertProcessAtSelection: (nodeId: string) => void
+    onInsertIfAtSelection: (nodeId: string) => void
+    onInsertCaseAtSelection: (nodeId: string) => void
+    onInsertWhileAtSelection: (nodeId: string) => void
+    onInsertDoWhileAtSelection: (nodeId: string) => void
     onDeleteSelected?: () => void
     onAddCaseBranch?: (caseId: string) => void
 }>): ReactNode {
@@ -207,14 +200,11 @@ function renderBranchContent(params: Readonly<{
         onLoopSelect,
         onLoopConditionDoubleClick,
         onLoopHoleSelect,
-        onInsertProcessAfter,
-        onInsertIfAfter,
-        onInsertCaseAfter,
-        onInsertWhileAfter,
-        onInsertDoWhileAfter,
-        onMoveProcessUp,
-        onMoveProcessDown,
-        onDeleteProcess,
+        onInsertProcessAtSelection,
+        onInsertIfAtSelection,
+        onInsertCaseAtSelection,
+        onInsertWhileAtSelection,
+        onInsertDoWhileAtSelection,
         onDeleteSelected,
         onAddCaseBranch,
     } = params
@@ -262,14 +252,11 @@ function renderBranchContent(params: Readonly<{
                         onLoopSelect={onLoopSelect}
                         onLoopConditionDoubleClick={onLoopConditionDoubleClick}
                         onLoopHoleSelect={onLoopHoleSelect}
-                        onInsertProcessAfter={onInsertProcessAfter}
-                        onInsertIfAfter={onInsertIfAfter}
-                        onInsertCaseAfter={onInsertCaseAfter}
-                        onInsertWhileAfter={onInsertWhileAfter}
-                        onInsertDoWhileAfter={onInsertDoWhileAfter}
-                        onMoveProcessUp={onMoveProcessUp}
-                        onMoveProcessDown={onMoveProcessDown}
-                        onDeleteProcess={onDeleteProcess}
+                        onInsertProcessAtSelection={onInsertProcessAtSelection}
+                        onInsertIfAtSelection={onInsertIfAtSelection}
+                        onInsertCaseAtSelection={onInsertCaseAtSelection}
+                        onInsertWhileAtSelection={onInsertWhileAtSelection}
+                        onInsertDoWhileAtSelection={onInsertDoWhileAtSelection}
                         onDeleteSelected={onDeleteSelected}
                         onAddCaseBranch={onAddCaseBranch}
                     />
@@ -314,14 +301,11 @@ function renderBranchContent(params: Readonly<{
                         onLoopSelect={onLoopSelect}
                         onLoopConditionDoubleClick={onLoopConditionDoubleClick}
                         onLoopHoleSelect={onLoopHoleSelect}
-                        onInsertProcessAfter={onInsertProcessAfter}
-                        onInsertIfAfter={onInsertIfAfter}
-                        onInsertCaseAfter={onInsertCaseAfter}
-                        onInsertWhileAfter={onInsertWhileAfter}
-                        onInsertDoWhileAfter={onInsertDoWhileAfter}
-                        onMoveProcessUp={onMoveProcessUp}
-                        onMoveProcessDown={onMoveProcessDown}
-                        onDeleteProcess={onDeleteProcess}
+                        onInsertProcessAtSelection={onInsertProcessAtSelection}
+                        onInsertIfAtSelection={onInsertIfAtSelection}
+                        onInsertCaseAtSelection={onInsertCaseAtSelection}
+                        onInsertWhileAtSelection={onInsertWhileAtSelection}
+                        onInsertDoWhileAtSelection={onInsertDoWhileAtSelection}
                         onDeleteSelected={onDeleteSelected}
                         onAddCaseBranch={onAddCaseBranch}
                     />
@@ -350,14 +334,11 @@ export function RenderIf(props: RenderIfProps) {
         onLoopSelect,
         onLoopConditionDoubleClick,
         onLoopHoleSelect,
-        onInsertProcessAfter,
-        onInsertIfAfter,
-        onInsertCaseAfter,
-        onInsertWhileAfter,
-        onInsertDoWhileAfter,
-        onMoveProcessUp,
-        onMoveProcessDown,
-        onDeleteProcess,
+        onInsertProcessAtSelection,
+        onInsertIfAtSelection,
+        onInsertCaseAtSelection,
+        onInsertWhileAtSelection,
+        onInsertDoWhileAtSelection,
         onDeleteSelected,
         onAddCaseBranch,
     } = props
@@ -455,7 +436,6 @@ export function RenderIf(props: RenderIfProps) {
 
             <g onClick={handleHeaderClick} onDoubleClick={handleHeaderDoubleClick} style={{ cursor: 'pointer' }} aria-label="编辑 IF 条件">
                 <path d={polygonPath(toTuplePoints(headerTriangle))} fill="transparent" />
-                {selectedIfPart === 'header' ? dashedPolygonOutline(toTuplePoints(headerTriangle)) : null}
 
                 <text
                     x={x0 + w / 2}
@@ -560,14 +540,11 @@ export function RenderIf(props: RenderIfProps) {
                 onLoopSelect,
                 onLoopConditionDoubleClick,
                 onLoopHoleSelect,
-                onInsertProcessAfter,
-                onInsertIfAfter,
-                onInsertCaseAfter,
-                onInsertWhileAfter,
-                onInsertDoWhileAfter,
-                onMoveProcessUp,
-                onMoveProcessDown,
-                onDeleteProcess,
+                onInsertProcessAtSelection,
+                onInsertIfAtSelection,
+                onInsertCaseAtSelection,
+                onInsertWhileAtSelection,
+                onInsertDoWhileAtSelection,
                 onDeleteSelected,
                 onAddCaseBranch,
             })}

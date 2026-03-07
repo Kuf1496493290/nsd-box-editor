@@ -1,3 +1,4 @@
+// FILE: src/components/canvas/canvasInteractionHelpers.ts
 import type { Dispatch, RefObject, SetStateAction, PointerEvent as ReactPointerEvent } from 'react'
 import type { CasePartKey, DragContainerKey, DragMoveRequest, IfPartKey } from '../../app/types'
 import type { LayoutBox } from '../../layout/layoutTypes'
@@ -60,7 +61,6 @@ type PointerHandlers = Readonly<{
     handlePointerCancelCapture: (event: ReactPointerEvent<SVGSVGElement>) => void
 }>
 
-
 type DragLifecycle = Readonly<{
     selectNodeForPointerDown: (nodeId: string) => void
     selectIfResultForPointerDown: (ifId: string, branch: 'true' | 'false') => void
@@ -80,6 +80,7 @@ export function createDragLifecycle(params: Readonly<{
     armSuppressNextClick: () => void
     tryHideOriginalNode: (nodeId: string) => void
     tryHideIfColumn: (ifId: string, branch: 'true' | 'false') => void
+    tryHideCaseColumn: (caseId: string, branchIndex: number) => void
     onMoveByDrag: (req: DragMoveRequest) => void
     onProcessSelect: (nodeId: string) => void
     onLoopSelect: (nodeId: string) => void
@@ -95,6 +96,7 @@ export function createDragLifecycle(params: Readonly<{
         armSuppressNextClick,
         tryHideOriginalNode,
         tryHideIfColumn,
+        tryHideCaseColumn,
         onMoveByDrag,
         onProcessSelect,
         onLoopSelect,
@@ -234,6 +236,8 @@ export function createDragLifecycle(params: Readonly<{
         const grabOffsetY = p.y - branchAbsY
 
         const ghostBox: LayoutBox = { ...branchBox, x: 0, y: 0 }
+
+        tryHideCaseColumn(caseId, fromBranchIndex)
         armSuppressNextClick()
 
         setDragging({
@@ -335,6 +339,7 @@ export function createDragPointerHandlers(params: Readonly<{
     finishCaseResultDrag: (drag: Extract<ActiveDrag, { kind: 'caseResult' }>, p: Point) => void
     restoreHiddenIfAny: () => void
     restoreHiddenIfColumnIfAny: () => void
+    restoreHiddenCaseColumnIfAny: () => void
 }>): PointerHandlers {
     const {
         pending,
@@ -354,10 +359,11 @@ export function createDragPointerHandlers(params: Readonly<{
         finishCaseResultDrag,
         restoreHiddenIfAny,
         restoreHiddenIfColumnIfAny,
+        restoreHiddenCaseColumnIfAny,
     } = params
 
     function tryStartPendingIfResult(event: ReactPointerEvent<SVGSVGElement>, target: Element): boolean {
-        const ifEl = target.closest<SVGGElement>('[data-drag-if-id][data-drag-if-branch]')
+        const ifEl = target.closest<SVGGraphicsElement>('[data-drag-if-id][data-drag-if-branch]')
         if (!ifEl) return false
 
         const ifId = ifEl.dataset.dragIfId
@@ -378,7 +384,7 @@ export function createDragPointerHandlers(params: Readonly<{
     }
 
     function tryStartPendingCaseResult(event: ReactPointerEvent<SVGSVGElement>, target: Element): boolean {
-        const caseEl = target.closest<SVGGElement>('[data-drag-case-id][data-drag-case-branch-index]')
+        const caseEl = target.closest<SVGGraphicsElement>('[data-drag-case-id][data-drag-case-branch-index]')
         if (!caseEl) return false
 
         const caseId = caseEl.dataset.dragCaseId
@@ -481,6 +487,7 @@ export function createDragPointerHandlers(params: Readonly<{
         const p = getContentPoint(event)
         restoreHiddenIfAny()
         restoreHiddenIfColumnIfAny()
+        restoreHiddenCaseColumnIfAny()
 
         const current = dragging
         setDragging(null)
@@ -506,6 +513,7 @@ export function createDragPointerHandlers(params: Readonly<{
         if (dragging) {
             restoreHiddenIfAny()
             restoreHiddenIfColumnIfAny()
+            restoreHiddenCaseColumnIfAny()
             setDragging(null)
         }
     }

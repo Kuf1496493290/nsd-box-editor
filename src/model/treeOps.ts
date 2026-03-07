@@ -14,7 +14,6 @@ import {
     clampIndex,
     insertNodeAfter,
     mapSequence,
-    moveNodeByOffset,
     normalizeCaseBranchLabels,
     prependIntoCaseBranch,
     prependIntoIfBranch,
@@ -294,7 +293,7 @@ export function insertDoWhileAfter(root: SequenceNode, nodeId: string): UpdateRe
     return insertLoopAfter(root, nodeId, 'doWhile')
 }
 
-export function addCaseBranchInRoot(
+export function insertCaseBranchInRoot(
     root: SequenceNode,
     caseNodeId: string,
     insertAfterBranchIndex?: number,
@@ -388,14 +387,6 @@ export function deleteNode(root: SequenceNode, nodeId: string): UpdateResult {
             selectedTarget: null,
         }
     })
-}
-
-export function moveNodeUp(root: SequenceNode, nodeId: string): UpdateResult {
-    return moveNodeByOffset(root, nodeId, -1)
-}
-
-export function moveNodeDown(root: SequenceNode, nodeId: string): UpdateResult {
-    return moveNodeByOffset(root, nodeId, 1)
 }
 
 export { applyDragMoveInRoot } from './treeOpsMove'

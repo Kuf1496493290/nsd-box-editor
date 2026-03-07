@@ -1,9 +1,10 @@
+// FILE: src/app/appController.ts
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import type { DragMoveRequest } from './types'
 import { useAppState } from './state'
 import { canDeleteByTarget } from './stateCommon'
 import { useCanvasViewport, useImportNotice, useProjectIo, useTextEditorState } from './appControllerUi'
-import { findNodeById, getCaseBranchAddRequest } from './appControllerHelpers'
+import { findNodeById, resolveCaseBranchAddRequest } from './appControllerHelpers'
 import { useAppControllerActions } from './appControllerActions'
 import { installKeyboardShortcuts } from '../features/keyboard'
 
@@ -14,11 +15,11 @@ export function useAppController() {
         replaceState,
         updateScale,
 
-        addProcessAfterEnd,
-        addIfAfterEnd,
-        addCaseAfterEnd,
-        addWhileAfterEnd,
-        addDoWhileAfterEnd,
+        appendProcessToRoot,
+        appendIfToRoot,
+        appendCaseToRoot,
+        appendWhileToRoot,
+        appendDoWhileToRoot,
 
         addProcessAfter,
         addIfAfter,
@@ -59,10 +60,8 @@ export function useAppController() {
         addCaseBranch,
         deleteCaseBranch,
 
-        moveProcessUp,
-        moveProcessDown,
         moveByDrag,
-        deleteProcess,
+        deleteNodeById,
 
         updateProcessText,
         updateIfConditionText,
@@ -71,7 +70,7 @@ export function useAppController() {
         updateCaseBranchLabel,
         updateIfBoolLabelMode,
 
-        selectNode,
+        selectNodeWithDefaultTarget,
         selectTarget,
 
         canUndo,
@@ -87,7 +86,7 @@ export function useAppController() {
     const [dragActive, setDragActive] = useState(false)
 
     const selectedNode = useMemo(() => findNodeById(state.root, state.selectedNodeId), [state.root, state.selectedNodeId])
-    const caseBranchAddRequest = useMemo(() => getCaseBranchAddRequest(state.selectedTarget), [state.selectedTarget])
+    const caseBranchAddRequest = useMemo(() => resolveCaseBranchAddRequest(state.selectedTarget), [state.selectedTarget])
     const canAddCaseBranch = caseBranchAddRequest !== null
     const canDeleteSelected = useMemo(() => canDeleteByTarget(state.selectedTarget), [state.selectedTarget])
 
@@ -155,7 +154,7 @@ export function useAppController() {
             openCaseBranchLabelEditor,
         },
         stateFns: {
-            selectNode,
+            selectNodeWithDefaultTarget,
             selectTarget,
             updateProcessText,
             updateIfConditionText,
@@ -170,11 +169,11 @@ export function useAppController() {
             addCaseAfter,
             addWhileAfter,
             addDoWhileAfter,
-            addProcessAfterEnd,
-            addIfAfterEnd,
-            addCaseAfterEnd,
-            addWhileAfterEnd,
-            addDoWhileAfterEnd,
+            appendProcessToRoot,
+            appendIfToRoot,
+            appendCaseToRoot,
+            appendWhileToRoot,
+            appendDoWhileToRoot,
             addProcessToIfBranchEnd,
             addIfToIfBranchEnd,
             addCaseToIfBranchEnd,
@@ -202,9 +201,7 @@ export function useAppController() {
             prependDoWhileInLoopBody,
         },
         mutationFns: {
-            moveProcessUp,
-            moveProcessDown,
-            deleteProcess,
+            deleteNodeById,
             addCaseBranch,
             deleteCaseBranch,
         },
@@ -271,22 +268,19 @@ export function useAppController() {
         onLoopConditionDoubleClick: actions.onLoopConditionDoubleClick,
         onLoopHoleSelect: actions.onLoopHoleSelect,
         onCanvasBlankClick: actions.onCanvasBlankClick,
-        onInsertProcessAfter: actions.onInsertProcessAfter,
-        onInsertIfAfter: actions.onInsertIfAfter,
-        onInsertCaseAfter: actions.onInsertCaseAfter,
-        onInsertWhileAfter: actions.onInsertWhileAfter,
-        onInsertDoWhileAfter: actions.onInsertDoWhileAfter,
-        onMoveProcessUp: actions.onMoveProcessUp,
-        onMoveProcessDown: actions.onMoveProcessDown,
-        onDeleteProcess: actions.onDeleteProcess,
+        onInsertProcessAtSelection: actions.onInsertProcessAtSelection,
+        onInsertIfAtSelection: actions.onInsertIfAtSelection,
+        onInsertCaseAtSelection: actions.onInsertCaseAtSelection,
+        onInsertWhileAtSelection: actions.onInsertWhileAtSelection,
+        onInsertDoWhileAtSelection: actions.onInsertDoWhileAtSelection,
         onDeleteSelected: actions.onDeleteSelected,
         onAddCaseBranch: actions.onAddCaseBranch,
         onMoveByDrag,
-        onToolbarAddProcess: actions.onToolbarAddProcess,
-        onToolbarAddIf: actions.onToolbarAddIf,
-        onToolbarAddCase: actions.onToolbarAddCase,
-        onToolbarAddWhile: actions.onToolbarAddWhile,
-        onToolbarAddDoWhile: actions.onToolbarAddDoWhile,
+        onToolbarInsertProcess: actions.onToolbarInsertProcess,
+        onToolbarInsertIf: actions.onToolbarInsertIf,
+        onToolbarInsertCase: actions.onToolbarInsertCase,
+        onToolbarInsertWhile: actions.onToolbarInsertWhile,
+        onToolbarInsertDoWhile: actions.onToolbarInsertDoWhile,
         onToolbarAddCaseBranch: actions.onToolbarAddCaseBranch,
         onEditorConfirm: actions.onEditorConfirm,
         closeEditor,

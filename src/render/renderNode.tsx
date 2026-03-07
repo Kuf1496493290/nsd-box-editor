@@ -29,15 +29,11 @@ type RenderNodeProps = Readonly<{
     onLoopConditionDoubleClick: (nodeId: string) => void
     onLoopHoleSelect: (nodeId: string) => void
 
-    onInsertProcessAfter: (nodeId: string) => void
-    onInsertIfAfter: (nodeId: string) => void
-    onInsertCaseAfter: (nodeId: string) => void
-    onInsertWhileAfter: (nodeId: string) => void
-    onInsertDoWhileAfter: (nodeId: string) => void
-
-    onMoveProcessUp: (nodeId: string) => void
-    onMoveProcessDown: (nodeId: string) => void
-    onDeleteProcess: (nodeId: string) => void
+    onInsertProcessAtSelection: (nodeId: string) => void
+    onInsertIfAtSelection: (nodeId: string) => void
+    onInsertCaseAtSelection: (nodeId: string) => void
+    onInsertWhileAtSelection: (nodeId: string) => void
+    onInsertDoWhileAtSelection: (nodeId: string) => void
 
     onDeleteSelected?: () => void
     onAddCaseBranch?: (caseId: string) => void

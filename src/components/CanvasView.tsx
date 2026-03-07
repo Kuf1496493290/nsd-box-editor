@@ -49,14 +49,11 @@ const GHOST_RENDER_NODE_ACTIONS = {
     onLoopSelect: NOOP,
     onLoopConditionDoubleClick: NOOP,
     onLoopHoleSelect: NOOP,
-    onInsertProcessAfter: NOOP,
-    onInsertIfAfter: NOOP,
-    onInsertCaseAfter: NOOP,
-    onInsertWhileAfter: NOOP,
-    onInsertDoWhileAfter: NOOP,
-    onMoveProcessUp: NOOP,
-    onMoveProcessDown: NOOP,
-    onDeleteProcess: NOOP,
+    onInsertProcessAtSelection: NOOP,
+    onInsertIfAtSelection: NOOP,
+    onInsertCaseAtSelection: NOOP,
+    onInsertWhileAtSelection: NOOP,
+    onInsertDoWhileAtSelection: NOOP,
     onDeleteSelected: NOOP,
     onAddCaseBranch: NOOP,
 } as const
@@ -87,22 +84,17 @@ type CanvasViewProps = Readonly<{
 
     onCanvasBlankClick: () => void
 
-    onInsertProcessAfter: (nodeId: string) => void
-    onInsertIfAfter: (nodeId: string) => void
-    onInsertCaseAfter: (nodeId: string) => void
-    onInsertWhileAfter: (nodeId: string) => void
-    onInsertDoWhileAfter: (nodeId: string) => void
-
-    onMoveProcessUp: (nodeId: string) => void
-    onMoveProcessDown: (nodeId: string) => void
-    onDeleteProcess: (nodeId: string) => void
+    onInsertProcessAtSelection: (nodeId: string) => void
+    onInsertIfAtSelection: (nodeId: string) => void
+    onInsertCaseAtSelection: (nodeId: string) => void
+    onInsertWhileAtSelection: (nodeId: string) => void
+    onInsertDoWhileAtSelection: (nodeId: string) => void
 
     onDeleteSelected: () => void
     onAddCaseBranch: (caseId: string, insertAfterBranchIndex?: number) => void
 
     onMoveByDrag: (req: DragMoveRequest) => void
 }>
-
 
 export function CanvasView(props: CanvasViewProps) {
     const {
@@ -124,14 +116,11 @@ export function CanvasView(props: CanvasViewProps) {
         onLoopConditionDoubleClick,
         onLoopHoleSelect,
         onCanvasBlankClick,
-        onInsertProcessAfter,
-        onInsertIfAfter,
-        onInsertCaseAfter,
-        onInsertWhileAfter,
-        onInsertDoWhileAfter,
-        onMoveProcessUp,
-        onMoveProcessDown,
-        onDeleteProcess,
+        onInsertProcessAtSelection,
+        onInsertIfAtSelection,
+        onInsertCaseAtSelection,
+        onInsertWhileAtSelection,
+        onInsertDoWhileAtSelection,
         onDeleteSelected,
         onAddCaseBranch,
         onMoveByDrag,
@@ -199,6 +188,7 @@ export function CanvasView(props: CanvasViewProps) {
 
     const hiddenElRef = useRef<Readonly<{ nodeId: string; prevOpacity: string }> | null>(null)
     const hiddenIfColumnRef = useRef<Readonly<{ ifId: string; branch: 'true' | 'false'; prevOpacity: string }> | null>(null)
+    const hiddenCaseColumnRef = useRef<Readonly<{ caseId: string; branchIndex: number; prevOpacity: string }> | null>(null)
 
     const restoreHiddenIfAny = useCallback(() => {
         const svg = svgRef.current
@@ -220,6 +210,19 @@ export function CanvasView(props: CanvasViewProps) {
         if (el) el.style.opacity = record.prevOpacity
 
         hiddenIfColumnRef.current = null
+    }, [svgRef])
+
+    const restoreHiddenCaseColumnIfAny = useCallback(() => {
+        const svg = svgRef.current
+        const record = hiddenCaseColumnRef.current
+        if (!svg || !record) return
+
+        const el = svg.querySelector<SVGGElement>(
+            `[data-drag-case-column-id="${record.caseId}"][data-drag-case-column-index="${String(record.branchIndex)}"]`,
+        )
+        if (el) el.style.opacity = record.prevOpacity
+
+        hiddenCaseColumnRef.current = null
     }, [svgRef])
 
     const handleCanvasBlankClickLocal = useCallback(() => {
@@ -264,6 +267,22 @@ export function CanvasView(props: CanvasViewProps) {
         [svgRef],
     )
 
+    const tryHideCaseColumn = useCallback(
+        (caseId: string, branchIndex: number) => {
+            const svg = svgRef.current
+            if (!svg) return
+
+            const el = svg.querySelector<SVGGElement>(
+                `[data-drag-case-column-id="${caseId}"][data-drag-case-column-index="${String(branchIndex)}"]`,
+            )
+            if (!el) return
+
+            hiddenCaseColumnRef.current = { caseId, branchIndex, prevOpacity: el.style.opacity }
+            el.style.opacity = '0'
+        },
+        [svgRef],
+    )
+
     const pointerHandlersRef = useRef<ReturnType<typeof createDragPointerHandlers> | null>(null)
 
     useEffect(() => {
@@ -274,6 +293,7 @@ export function CanvasView(props: CanvasViewProps) {
             armSuppressNextClick,
             tryHideOriginalNode,
             tryHideIfColumn,
+            tryHideCaseColumn,
             onMoveByDrag,
             onProcessSelect,
             onLoopSelect,
@@ -301,6 +321,7 @@ export function CanvasView(props: CanvasViewProps) {
             finishCaseResultDrag: dragLifecycle.finishCaseResultDrag,
             restoreHiddenIfAny,
             restoreHiddenIfColumnIfAny,
+            restoreHiddenCaseColumnIfAny,
         })
     }, [
         armSuppressNextClick,
@@ -317,7 +338,9 @@ export function CanvasView(props: CanvasViewProps) {
         dragging,
         restoreHiddenIfAny,
         restoreHiddenIfColumnIfAny,
+        restoreHiddenCaseColumnIfAny,
         svgRef,
+        tryHideCaseColumn,
         tryHideIfColumn,
         tryHideOriginalNode,
     ])
@@ -404,14 +427,11 @@ export function CanvasView(props: CanvasViewProps) {
                     onLoopSelect={onLoopSelect}
                     onLoopConditionDoubleClick={onLoopConditionDoubleClick}
                     onLoopHoleSelect={onLoopHoleSelect}
-                    onInsertProcessAfter={onInsertProcessAfter}
-                    onInsertIfAfter={onInsertIfAfter}
-                    onInsertCaseAfter={onInsertCaseAfter}
-                    onInsertWhileAfter={onInsertWhileAfter}
-                    onInsertDoWhileAfter={onInsertDoWhileAfter}
-                    onMoveProcessUp={onMoveProcessUp}
-                    onMoveProcessDown={onMoveProcessDown}
-                    onDeleteProcess={onDeleteProcess}
+                    onInsertProcessAtSelection={onInsertProcessAtSelection}
+                    onInsertIfAtSelection={onInsertIfAtSelection}
+                    onInsertCaseAtSelection={onInsertCaseAtSelection}
+                    onInsertWhileAtSelection={onInsertWhileAtSelection}
+                    onInsertDoWhileAtSelection={onInsertDoWhileAtSelection}
                     onDeleteSelected={onDeleteSelected}
                     onAddCaseBranch={onAddCaseBranch}
                 />
@@ -446,23 +466,23 @@ export function CanvasView(props: CanvasViewProps) {
                         }}
                         onInsertProcess={() => {
                             setOpenInsertMenuNodeId(null)
-                            onInsertProcessAfter(hoverOverlay.nodeId)
+                            onInsertProcessAtSelection(hoverOverlay.nodeId)
                         }}
                         onInsertIf={() => {
                             setOpenInsertMenuNodeId(null)
-                            onInsertIfAfter(hoverOverlay.nodeId)
+                            onInsertIfAtSelection(hoverOverlay.nodeId)
                         }}
                         onInsertCase={() => {
                             setOpenInsertMenuNodeId(null)
-                            onInsertCaseAfter(hoverOverlay.nodeId)
+                            onInsertCaseAtSelection(hoverOverlay.nodeId)
                         }}
                         onInsertWhile={() => {
                             setOpenInsertMenuNodeId(null)
-                            onInsertWhileAfter(hoverOverlay.nodeId)
+                            onInsertWhileAtSelection(hoverOverlay.nodeId)
                         }}
                         onInsertDoWhile={() => {
                             setOpenInsertMenuNodeId(null)
-                            onInsertDoWhileAfter(hoverOverlay.nodeId)
+                            onInsertDoWhileAtSelection(hoverOverlay.nodeId)
                         }}
                         showAddCaseBranch={hoverOverlay.showAddCaseBranch}
                         onAddCaseBranch={

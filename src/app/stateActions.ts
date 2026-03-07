@@ -1,8 +1,9 @@
+// FILE: src/app/stateActions.ts
 import type { Dispatch, SetStateAction } from 'react'
 import type { AppState, BoolLabelMode, DragMoveRequest, SelectionTarget } from './types'
 import { commitHistory, defaultTargetForNode, normalizeSelection, type HistoryState } from './stateCommon'
 import {
-    addCaseBranchInRoot,
+    insertCaseBranchInRoot,
     appendCaseAtEnd,
     appendCaseToCaseBranchEnd,
     appendCaseToIfBranchEnd,
@@ -26,8 +27,6 @@ import {
     insertIfAfter,
     insertProcessAfter,
     insertWhileAfter,
-    moveNodeDown,
-    moveNodeUp,
     prependCaseToCaseBranch,
     prependCaseToIfBranch,
     prependCaseToLoopBody,
@@ -78,11 +77,11 @@ function withSelection(
 type SetHistory = Dispatch<SetStateAction<HistoryState>>
 
 export type TreeActionSet = Readonly<{
-    addProcessAfterEnd: () => void
-    addIfAfterEnd: () => void
-    addCaseAfterEnd: () => void
-    addWhileAfterEnd: () => void
-    addDoWhileAfterEnd: () => void
+    appendProcessToRoot: () => void
+    appendIfToRoot: () => void
+    appendCaseToRoot: () => void
+    appendWhileToRoot: () => void
+    appendDoWhileToRoot: () => void
     addProcessAfter: (nodeId: string) => void
     addIfAfter: (nodeId: string) => void
     addCaseAfter: (nodeId: string) => void
@@ -115,10 +114,8 @@ export type TreeActionSet = Readonly<{
     prependDoWhileInLoopBody: (nodeId: string) => void
     addCaseBranch: (nodeId: string, insertAfterBranchIndex?: number) => void
     deleteCaseBranch: (nodeId: string, branchIndex: number) => void
-    moveProcessUp: (nodeId: string) => void
-    moveProcessDown: (nodeId: string) => void
     moveByDrag: (req: DragMoveRequest) => void
-    deleteProcess: (nodeId: string) => void
+    deleteNodeById: (nodeId: string) => void
     updateProcessText: (nodeId: string, text: string) => void
     updateIfConditionText: (nodeId: string, conditionText: string) => void
     updateCaseConditionText: (nodeId: string, conditionText: string) => void
@@ -153,23 +150,23 @@ export function createTreeActions(setHistory: SetHistory): TreeActionSet {
         })
     }
 
-    function addProcessAfterEnd() {
+    function appendProcessToRoot() {
         commitSelectionOp((present) => appendProcessAtEnd(present.root))
     }
 
-    function addIfAfterEnd() {
+    function appendIfToRoot() {
         commitSelectionOp((present) => appendIfAtEnd(present.root))
     }
 
-    function addCaseAfterEnd() {
+    function appendCaseToRoot() {
         commitSelectionOp((present) => appendCaseAtEnd(present.root))
     }
 
-    function addWhileAfterEnd() {
+    function appendWhileToRoot() {
         commitSelectionOp((present) => appendWhileAtEnd(present.root))
     }
 
-    function addDoWhileAfterEnd() {
+    function appendDoWhileToRoot() {
         commitSelectionOp((present) => appendDoWhileAtEnd(present.root))
     }
 
@@ -294,26 +291,18 @@ export function createTreeActions(setHistory: SetHistory): TreeActionSet {
     }
 
     function addCaseBranch(nodeId: string, insertAfterBranchIndex?: number) {
-        commitSelectionOp((present) => addCaseBranchInRoot(present.root, nodeId, insertAfterBranchIndex))
+        commitSelectionOp((present) => insertCaseBranchInRoot(present.root, nodeId, insertAfterBranchIndex))
     }
 
     function deleteCaseBranch(nodeId: string, branchIndex: number) {
         commitSelectionOp((present) => deleteCaseBranchInRoot(present.root, nodeId, branchIndex))
     }
 
-    function moveProcessUp(nodeId: string) {
-        commitSelectionOp((present) => moveNodeUp(present.root, nodeId))
-    }
-
-    function moveProcessDown(nodeId: string) {
-        commitSelectionOp((present) => moveNodeDown(present.root, nodeId))
-    }
-
     function moveByDrag(req: DragMoveRequest) {
         commitSelectionOp((present) => applyDragMoveInRoot(present.root, req))
     }
 
-    function deleteProcess(nodeId: string) {
+    function deleteNodeById(nodeId: string) {
         setHistory((prev) => {
             const present = prev.present
             const result = deleteNode(present.root, nodeId)
@@ -347,11 +336,11 @@ export function createTreeActions(setHistory: SetHistory): TreeActionSet {
     }
 
     return {
-        addProcessAfterEnd,
-        addIfAfterEnd,
-        addCaseAfterEnd,
-        addWhileAfterEnd,
-        addDoWhileAfterEnd,
+        appendProcessToRoot,
+        appendIfToRoot,
+        appendCaseToRoot,
+        appendWhileToRoot,
+        appendDoWhileToRoot,
         addProcessAfter,
         addIfAfter,
         addCaseAfter,
@@ -384,10 +373,8 @@ export function createTreeActions(setHistory: SetHistory): TreeActionSet {
         prependDoWhileInLoopBody,
         addCaseBranch,
         deleteCaseBranch,
-        moveProcessUp,
-        moveProcessDown,
         moveByDrag,
-        deleteProcess,
+        deleteNodeById,
         updateProcessText,
         updateIfConditionText,
         updateCaseConditionText,
