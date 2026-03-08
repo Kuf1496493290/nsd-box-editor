@@ -1,4 +1,3 @@
-// FILE: src/render/renderIf.tsx
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import type { CasePartKey, IfNode, IfPartKey, SelectionTarget, StyleConfig } from '../app/types'
 import type { LayoutBox } from '../layout/layoutTypes'
@@ -315,6 +314,9 @@ function renderBranchContent(params: Readonly<{
     )
 }
 
+/**
+ * 渲染 IF 节点，包含头部三角区、真假分支容器与分支内容。
+ */
 export function RenderIf(props: RenderIfProps) {
     const {
         box,

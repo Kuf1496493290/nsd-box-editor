@@ -2,6 +2,32 @@
 
 ## 中文说明
 
+### Windows 一键启动（无 CMD 常驻）
+
+已提供 Electron 打包方案，运行后是桌面窗口，不需要浏览器，也不需要保持 `cmd` 窗口。
+
+#### 构建“文件夹即用”版本（推荐）
+
+```powershell
+npm install
+npm run desktop:build
+```
+
+产物目录：`release\win-unpacked\`
+
+最终给用户分发这个文件夹即可，用户双击：`release\win-unpacked\NSD Box Editor.exe`
+
+- 启动时直接打开应用窗口（不是网页标签页）
+- 关闭窗口后，进程自动退出
+
+#### 构建单文件便携版（可选）
+
+```powershell
+npm run desktop:portable
+```
+
+产物示例：`release\NSD Box Editor-0.0.0-portable.exe`
+
 ### 项目简介
 
 这是一个基于 React + TypeScript + Vite 的 Nassi-Shneiderman Diagram (NSD) 可视化编辑器。
@@ -102,6 +128,32 @@ src/
 ---
 
 ## English
+
+### Windows Click-to-Run Desktop Build (No persistent CMD)
+
+This project now supports Electron packaging. The output is a desktop app window (no browser tab and no long-running terminal window).
+
+#### Build folder-based distribution (recommended)
+
+```powershell
+npm install
+npm run desktop:build
+```
+
+Output: `release\win-unpacked\`
+
+Distribute this folder and let users launch `NSD Box Editor.exe` directly.
+
+- App opens as a desktop window
+- Closing the window exits the process automatically
+
+#### Build portable single-file executable (optional)
+
+```powershell
+npm run desktop:portable
+```
+
+Example output: `release\NSD Box Editor-0.0.0-portable.exe`
 
 ### Overview
 

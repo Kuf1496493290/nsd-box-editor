@@ -1,4 +1,3 @@
-// FILE: src/utils/projectJson.ts
 import type { AppState, BoolLabelMode, LoopKind, NsdNode, SequenceNode, StyleConfig } from '../app/types'
 import { DEFAULT_STYLE } from '../app/constants'
 
@@ -195,6 +194,9 @@ function normalizeStyle(raw: unknown): StyleConfig {
     return next
 }
 
+/**
+ * 将当前应用状态序列化为工程文件对象。
+ */
 export function buildProjectFile(state: AppState): ProjectFile {
     return {
         root: state.root,
@@ -203,6 +205,9 @@ export function buildProjectFile(state: AppState): ProjectFile {
     }
 }
 
+/**
+ * 解析并规范化工程 JSON；失败时返回可直接展示的错误信息。
+ */
 export function parseProjectJsonDetailed(text: string): ProjectParseResult {
     let data: unknown
     try {

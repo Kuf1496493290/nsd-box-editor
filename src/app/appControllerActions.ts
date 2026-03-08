@@ -1,4 +1,3 @@
-// FILE: src/app/appControllerActions.ts
 import { useCallback } from 'react'
 import type {
     AppState,
@@ -16,14 +15,23 @@ import {
     type EditingKind,
 } from './appControllerHelpers'
 
+/**
+ * CASE 分支新增请求；为空时表示当前选中态不支持新增分支。
+ */
 type CaseBranchAddRequest = Readonly<{ nodeId: string; insertAfterBranchIndex?: number }> | null
 
+/**
+ * 文本编辑器相关能力集合，统一由外层注入，避免控制器直接依赖 UI 组件。
+ */
 type EditorFns = Readonly<{
     closeEditor: () => void
     openEditor: (nodeId: string, kind: Exclude<EditingKind, 'caseBranchLabel'>, text: string) => void
     openCaseBranchLabelEditor: (caseId: string, branchIndex: number, text: string) => void
 }>
 
+/**
+ * 状态读写能力集合，封装对 state.ts 的关键更新入口。
+ */
 type StateFns = Readonly<{
     selectNodeWithDefaultTarget: (nodeId: string | null) => void
     selectTarget: (target: SelectionTarget | null) => void
@@ -35,6 +43,9 @@ type StateFns = Readonly<{
     updateIfBoolLabelMode: (nodeId: string, mode: BoolLabelMode) => void
 }>
 
+/**
+ * 插入动作能力集合：覆盖 root、if/case 分支与 loop body 的所有插入路径。
+ */
 type InsertActions = Readonly<{
     addProcessAfter: (nodeId: string) => void
     addIfAfter: (nodeId: string) => void
@@ -73,6 +84,9 @@ type InsertActions = Readonly<{
     prependDoWhileInLoopBody: (nodeId: string) => void
 }>
 
+/**
+ * 结构变更能力集合：删除节点、增加/删除 CASE 分支。
+ */
 type MutationFns = Readonly<{
     deleteNodeById: (nodeId: string) => void
     addCaseBranch: (caseId: string, insertAfterBranchIndex?: number) => void
@@ -84,6 +98,12 @@ type DeleteIntent =
     | Readonly<{ kind: 'deleteNode' }>
     | Readonly<{ kind: 'deleteCaseBranch'; branchIndex: number }>
 
+/**
+ * 基于“当前选中目标 + 节点类型”解析删除意图。
+ * 规则：
+ * - loop 空洞与 if/case 的容器区域只允许选中，不允许删除。
+ * - case 分支标签在分支数大于 2 时优先删除分支，否则退化为删除整个 case。
+ */
 function resolveDeleteIntent(target: SelectionTarget, node: NsdNode): DeleteIntent {
     if (target.kind === 'loopPart') return { kind: 'none' }
 
@@ -104,6 +124,10 @@ function resolveDeleteIntent(target: SelectionTarget, node: NsdNode): DeleteInte
     return { kind: 'deleteNode' }
 }
 
+/**
+ * 聚合并产出 App 控制器动作集合。
+ * 该 Hook 负责把“选中态语义、编辑器状态、插入策略、结构变更策略”统一编排为 UI 可直接调用的回调。
+ */
 export function useAppControllerActions(params: Readonly<{
     state: AppState
     selectedNode: NsdNode | null
@@ -233,6 +257,11 @@ export function useAppControllerActions(params: Readonly<{
 
     const onEditorConfirm = useCallback((nextText: string) => {
         if (!editingNodeId) return
+
+        /*
+         * 文本保存按编辑类型分发到不同更新入口，确保各节点字段写入语义稳定。
+         * caseBranchLabel 依赖 editingBranchIndex，因此在前置分支全部不命中后单独处理。
+         */
         if (editingKind === 'process') {
             stateFns.updateProcessText(editingNodeId, nextText)
             editor.closeEditor()
@@ -329,6 +358,9 @@ export function useAppControllerActions(params: Readonly<{
         const node = selectedNode
         if (!node || !target) return
 
+        /*
+         * 删除动作先解析意图，再执行具体 mutation，避免各类选中态分支在 UI 层重复实现。
+         */
         const intent = resolveDeleteIntent(target, node)
         if (intent.kind === 'none') return
 

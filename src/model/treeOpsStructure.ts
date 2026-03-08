@@ -1,6 +1,8 @@
-// FILE: src/model/treeOpsStructure.ts
 import type { NsdNode, SelectionTarget, SequenceNode } from '../app/types'
 
+/**
+ * 树结构更新结果：包含新根、是否变更以及可选的选中态回传。
+ */
 export type UpdateResult = Readonly<{
     root: SequenceNode
     changed: boolean
@@ -177,6 +179,9 @@ function updateChildNode(child: NsdNode, updater: SequenceUpdater): Readonly<{ n
     return { next: r.node, acc: r.acc }
 }
 
+/**
+ * 在序列内执行递归更新：先尝试直接更新当前序列，再下钻到子节点容器。
+ */
 export function updateWithinSequence(root: SequenceNode, updater: SequenceUpdater): UpdateResult {
     const direct = updater(root)
     if (direct) return direct
@@ -384,6 +389,9 @@ export function prependIntoLoopBody(root: SequenceNode, loopNodeId: string, crea
     }
 }
 
+/**
+ * 在指定节点后插入新节点；仅当目标节点存在于同级序列时生效。
+ */
 export function insertNodeAfter(root: SequenceNode, nodeId: string, createNode: () => NsdNode): UpdateResult {
     return updateWithinSequence(root, (sequence) => {
         const index = sequence.children.findIndex((node) => node.id === nodeId)

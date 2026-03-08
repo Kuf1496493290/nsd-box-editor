@@ -1,4 +1,3 @@
-// FILE: src/render/renderCase.tsx
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import type { CaseNode, CasePartKey, IfPartKey, SelectionTarget, StyleConfig } from '../app/types'
 import type { LayoutBox } from '../layout/layoutTypes'
@@ -63,6 +62,9 @@ function columnKey(caseId: string, branchId: string | undefined, index: number):
     return `col-${caseId}-${index}`
 }
 
+/**
+ * 渲染 CASE 节点，包含头部、分支标签行与各分支内容区域。
+ */
 export function RenderCase(props: RenderCaseProps) {
     const {
         box,

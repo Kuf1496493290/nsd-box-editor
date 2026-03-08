@@ -61,6 +61,9 @@ export function sumNumbers(values: number[]): number {
     return values.reduce((s, v) => s + v, 0)
 }
 
+/**
+ * 按比例扩展列宽，确保总宽不小于目标值。
+ */
 export function ensureMinTotalWidth(widths: number[], targetTotal: number): number[] {
     const w = widths.map((v) => Math.max(0, Math.ceil(v)))
     const cur = sumNumbers(w)
@@ -93,6 +96,9 @@ export function ensureMinTotalWidth(widths: number[], targetTotal: number): numb
     return out
 }
 
+/**
+ * 计算 LOOP 节点最小边长需求，兼顾条件文本与 body 宽度。
+ */
 export function requiredLoopSide(node: LoopNode, style: StyleConfig, depth: number): number {
     const a = loopArmSize(style)
     const headerPad = safePad(style.paddingHeader)
@@ -108,6 +114,9 @@ export function requiredLoopSide(node: LoopNode, style: StyleConfig, depth: numb
     return Math.max(baseMin, sideNeed)
 }
 
+/**
+ * 递归计算任意节点所需最小宽度，是布局阶段的核心输入。
+ */
 export function requiredWidth(node: NsdNode, style: StyleConfig, depth: number): number {
     const headerPad = safePad(style.paddingHeader)
     const labelPad = safePad(style.paddingBranchLabel)
@@ -193,6 +202,9 @@ export function containsLoopDeep(node: NsdNode): boolean {
     return false
 }
 
+/**
+ * 将总高度尽量均匀分配到 count 个槽位。
+ */
 export function distributeSlots(totalH: number, count: number): number[] {
     if (count <= 0) return []
     const base = Math.floor(totalH / count)

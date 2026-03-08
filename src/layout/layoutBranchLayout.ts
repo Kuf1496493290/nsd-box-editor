@@ -17,6 +17,9 @@ import {
     type LayoutNodeFn,
 } from './layoutBranchHelpers'
 
+/**
+ * 计算 IF 节点布局，统一收敛左右分支宽度并分配头部/主体高度。
+ */
 export function layoutIfNode(params: Readonly<{
     node: IfNode
     style: StyleConfig
@@ -106,6 +109,9 @@ export function layoutIfNode(params: Readonly<{
     }
 }
 
+/**
+ * 计算 CASE 节点布局，包含头部、标签行与各分支主体的稳定化结果。
+ */
 export function layoutCaseNode(params: Readonly<{
     node: CaseNode
     style: StyleConfig

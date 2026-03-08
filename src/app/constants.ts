@@ -1,30 +1,34 @@
-// FILE: src/app/constants.ts
 import type { AppState, SequenceNode, StyleConfig } from './types'
 import { createProcessNode } from '../model/factory'
 
-/**
- * 初始矩形基准宽度常量；实际布局高度以当前 style 计算结果为准
- *
- * 说明：
- * - 这里的 x/y 是“默认风格”的基准值（新建工程时使用）
- * - 导入 JSON 时会使用文件里的 style，因此工程样式以导入内容为准
- */
+// 默认样式使用的基础最小块宽。
 export const BASE_BLOCK_WIDTH = 240
+// 默认样式使用的基础最小块高。
 export const BASE_BLOCK_HEIGHT = 36
 
 export const DEFAULT_STYLE: StyleConfig = {
     fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", Arial, sans-serif',
-    // lineBoxHeight(15)=18，paddingProcessY=9 => 18 + 18 = 36
+    // 节点文本默认字号。
     fontSize: 15,
+    // 边框线默认宽度。
     lineWidth: 1,
+    // 过程块默认纵向内边距。
     paddingProcessY: 9,
+    // 过程块默认横向内边距。
     paddingProcessX: 7,
+    // IF/CASE/LOOP 头部默认内边距。
     paddingHeader: 7,
+    // 分支标签默认内边距。
     paddingBranchLabel: 7,
+    // LOOP 侧臂默认宽度（与基础块高一致）。
     loopSidebarWidth: Number(BASE_BLOCK_HEIGHT),
+    // 全局最小块宽。
     minBlockWidth: BASE_BLOCK_WIDTH,
 }
 
+/**
+ * 创建默认根序列，首次进入画布时会自动带一个过程节点。
+ */
 export function createDefaultRoot(): SequenceNode {
     return {
         id: 'root',
@@ -33,6 +37,9 @@ export function createDefaultRoot(): SequenceNode {
     }
 }
 
+/**
+ * 创建应用初始状态，并将首个节点设为默认选中目标。
+ */
 export function createInitialState(): AppState {
     const root = createDefaultRoot()
     const first = root.children[0]

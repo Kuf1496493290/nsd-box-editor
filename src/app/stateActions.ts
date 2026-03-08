@@ -1,4 +1,3 @@
-// FILE: src/app/stateActions.ts
 import type { Dispatch, SetStateAction } from 'react'
 import type { AppState, BoolLabelMode, DragMoveRequest, SelectionTarget } from './types'
 import { commitHistory, defaultTargetForNode, normalizeSelection, type HistoryState } from './stateCommon'
@@ -57,6 +56,9 @@ type RootUpdateResult = Readonly<{
     selectedTarget?: SelectionTarget | null
 }>
 
+/**
+ * 在根树更新后统一收敛 selectedNodeId/selectedTarget，避免出现失效选中。
+ */
 function withSelection(
     prev: AppState,
     root: AppState['root'],
@@ -124,7 +126,13 @@ export type TreeActionSet = Readonly<{
     updateIfBoolLabelMode: (nodeId: string, mode: BoolLabelMode) => void
 }>
 
+/**
+ * 创建树操作动作集合，并将所有结构/文本更新统一纳入历史记录。
+ */
 export function createTreeActions(setHistory: SetHistory): TreeActionSet {
+    /**
+     * 用于结构变更：提交后按最新树结构重新规范化选中目标。
+     */
     const commitSelectionOp = (op: (present: AppState) => RootUpdateResult) => {
         setHistory((prev) => {
             const present = prev.present
@@ -134,6 +142,9 @@ export function createTreeActions(setHistory: SetHistory): TreeActionSet {
         })
     }
 
+    /**
+     * 用于文本变更：保持节点选中连续性，并刷新默认选中目标。
+     */
     const commitTextOp = (op: (present: AppState) => RootUpdateResult) => {
         setHistory((prev) => {
             const present = prev.present

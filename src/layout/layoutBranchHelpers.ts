@@ -171,6 +171,9 @@ function layoutBranchChildAtSlot(params: Readonly<{
     return y + h + BORDER_GAP
 }
 
+/**
+ * 按给定列宽与目标高度布局单个分支序列，并在含 loop 时做非 loop 空间分配。
+ */
 export function layoutBranchSequence(
     branch: SequenceNode,
     style: StyleConfig,
@@ -414,6 +417,9 @@ function computeLoopWidthsAndBodyH(params: Readonly<{
     return { widths, bodyH: Math.ceil(bodyH) }
 }
 
+/**
+ * 多轮稳定化分支列宽，统一满足最小总宽与 loop 竞争约束。
+ */
 export function stabilizeBranches(params: Readonly<{
     branches: SequenceNode[]
     style: StyleConfig
@@ -484,6 +490,9 @@ export function stabilizeBranches(params: Readonly<{
     }
 }
 
+/**
+ * 在已确定 body 高度后，推导每列可用于非 loop 内容的目标高度。
+ */
 export function computeNonLoopTargets(params: Readonly<{
     bodyH: number
     widths: number[]
@@ -499,6 +508,9 @@ export function computeNonLoopTargets(params: Readonly<{
     })
 }
 
+/**
+ * 解析 CASE 头部/标签/主体高度，处理强制高度与额外空间吸收策略。
+ */
 export function resolveCaseHeights(params: Readonly<{
     headerMin: number
     labelMin: number

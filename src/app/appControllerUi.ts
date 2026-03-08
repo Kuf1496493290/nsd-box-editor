@@ -4,13 +4,31 @@ import { buildProjectFile, parseProjectJsonDetailed } from '../utils/projectJson
 import type { AppState } from './types'
 import type { EditingKind } from './appControllerHelpers'
 
+// 导入提示默认自动隐藏时长。
+const DEFAULT_NOTICE_TIMEOUT_MS = 2000
+// 导入提示最小自动隐藏时长。
+const MIN_NOTICE_TIMEOUT_MS = 800
+// 常规导入导出成功提示时长。
+const DEFAULT_SUCCESS_NOTICE_TIMEOUT_MS = 1600
+// I/O 失败错误提示时长。
+const DEFAULT_ERROR_NOTICE_TIMEOUT_MS = 2600
+// 解析/校验失败错误提示时长。
+const IMPORT_PARSE_ERROR_TIMEOUT_MS = 3000
+// PNG 导出缩放倍数。
+const IMAGE_EXPORT_SCALE = 2
+// 首次布局前的初始视口占位尺寸。
+const INITIAL_VIEWPORT_SIZE = { width: 1, height: 1 } as const
+
 export type ImportNotice = Readonly<{ kind: 'info' | 'error'; text: string }>
 
+/**
+ * 管理导入导出提示，并自动在超时后清除。
+ */
 export function useImportNotice() {
     const [importNotice, setImportNotice] = useState<ImportNotice | null>(null)
     const importNoticeTimerRef = useRef<number | null>(null)
 
-    const showImportNotice = useCallback((notice: ImportNotice, timeoutMs = 2000) => {
+    const showImportNotice = useCallback((notice: ImportNotice, timeoutMs = DEFAULT_NOTICE_TIMEOUT_MS) => {
         setImportNotice(notice)
 
         if (importNoticeTimerRef.current !== null) {
@@ -21,7 +39,7 @@ export function useImportNotice() {
         importNoticeTimerRef.current = globalThis.setTimeout(() => {
             setImportNotice(null)
             importNoticeTimerRef.current = null
-        }, Math.max(800, Math.floor(timeoutMs)))
+        }, Math.max(MIN_NOTICE_TIMEOUT_MS, Math.floor(timeoutMs)))
     }, [])
 
     useEffect(() => {
@@ -39,11 +57,14 @@ export function useImportNotice() {
     }
 }
 
+/**
+ * 维护画布与容器尺寸，并在尺寸变化时保持视口居中。
+ */
 export function useCanvasViewport() {
     const canvasWrapRef = useRef<HTMLDivElement>(null)
 
-    const [canvasSize, setCanvasSize] = useState<Readonly<{ width: number; height: number }>>({ width: 1, height: 1 })
-    const [wrapSize, setWrapSize] = useState<Readonly<{ width: number; height: number }>>({ width: 1, height: 1 })
+    const [canvasSize, setCanvasSize] = useState<Readonly<{ width: number; height: number }>>(INITIAL_VIEWPORT_SIZE)
+    const [wrapSize, setWrapSize] = useState<Readonly<{ width: number; height: number }>>(INITIAL_VIEWPORT_SIZE)
 
     const onCanvasSizeChange = useCallback((next: Readonly<{ width: number; height: number }>) => {
         setCanvasSize((prev) => (prev.width === next.width && prev.height === next.height ? prev : next))
@@ -102,6 +123,9 @@ export function useCanvasViewport() {
     }
 }
 
+/**
+ * 维护文本编辑器状态，并提供统一的打开/关闭入口。
+ */
 export function useTextEditorState() {
     const [editingNodeId, setEditingNodeId] = useState<string | null>(null)
     const [editingText, setEditingText] = useState('')
@@ -159,6 +183,9 @@ export function useTextEditorState() {
     }
 }
 
+/**
+ * 封装工程与图片的导入导出流程，并统一反馈提示文案。
+ */
 export function useProjectIo(params: Readonly<{
     state: AppState
     svgRef: RefObject<SVGSVGElement | null>
@@ -174,14 +201,14 @@ export function useProjectIo(params: Readonly<{
         if (!svgRef.current) return
 
         try {
-            const result = await saveDiagramImage(svgRef.current, 2)
+            const result = await saveDiagramImage(svgRef.current, IMAGE_EXPORT_SCALE)
             if (!result.saved) return
 
             const kindLabel = result.kind === 'svg' ? 'SVG' : 'PNG'
             const fileName = result.fileName ?? (result.kind === 'svg' ? 'nsd-box.svg' : 'nsd-box.png')
-            showImportNotice({ kind: 'info', text: `已导出${kindLabel}：${fileName}` }, 1600)
+            showImportNotice({ kind: 'info', text: `已导出${kindLabel}：${fileName}` }, DEFAULT_SUCCESS_NOTICE_TIMEOUT_MS)
         } catch {
-            showImportNotice({ kind: 'error', text: '导出失败：无法写入图片文件。' }, 2600)
+            showImportNotice({ kind: 'error', text: '导出失败：无法写入图片文件。' }, DEFAULT_ERROR_NOTICE_TIMEOUT_MS)
         }
     }, [showImportNotice, svgRef])
 
@@ -192,16 +219,16 @@ export function useProjectIo(params: Readonly<{
 
             const kindLabel = result.kind === 'txt' ? 'TXT' : 'JSON'
             const fileName = result.fileName ?? (result.kind === 'txt' ? 'nsd-project.txt' : 'nsd-project.json')
-            showImportNotice({ kind: 'info', text: `已导出${kindLabel}：${fileName}` }, 1600)
+            showImportNotice({ kind: 'info', text: `已导出${kindLabel}：${fileName}` }, DEFAULT_SUCCESS_NOTICE_TIMEOUT_MS)
         } catch {
-            showImportNotice({ kind: 'error', text: '导出失败：无法写入工程文件。' }, 2600)
+            showImportNotice({ kind: 'error', text: '导出失败：无法写入工程文件。' }, DEFAULT_ERROR_NOTICE_TIMEOUT_MS)
         }
     }, [showImportNotice, state])
 
     const applyImportedProjectText = useCallback((text: string, fileName: string | null) => {
         const result = parseProjectJsonDetailed(text)
         if (!result.ok) {
-            showImportNotice({ kind: 'error', text: result.message }, 3000)
+            showImportNotice({ kind: 'error', text: result.message }, IMPORT_PARSE_ERROR_TIMEOUT_MS)
             return
         }
 
@@ -221,7 +248,7 @@ export function useProjectIo(params: Readonly<{
 
         showImportNotice(
             { kind: 'info', text: fileName ? `导入成功：${fileName}` : '导入成功。' },
-            1600,
+            DEFAULT_SUCCESS_NOTICE_TIMEOUT_MS,
         )
     }, [closeEditor, replaceState, showImportNotice])
 
@@ -237,7 +264,7 @@ export function useProjectIo(params: Readonly<{
             if (!result.opened) return
             applyImportedProjectText(result.text, result.fileName)
         } catch {
-            showImportNotice({ kind: 'error', text: '导入失败：无法读取文件内容。' }, 2600)
+            showImportNotice({ kind: 'error', text: '导入失败：无法读取文件内容。' }, DEFAULT_ERROR_NOTICE_TIMEOUT_MS)
         }
     }, [applyImportedProjectText, showImportNotice])
 
@@ -250,7 +277,7 @@ export function useProjectIo(params: Readonly<{
         try {
             text = await file.text()
         } catch {
-            showImportNotice({ kind: 'error', text: '导入失败：无法读取文件内容。' }, 2600)
+            showImportNotice({ kind: 'error', text: '导入失败：无法读取文件内容。' }, DEFAULT_ERROR_NOTICE_TIMEOUT_MS)
             return
         }
 

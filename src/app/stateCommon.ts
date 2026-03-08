@@ -6,6 +6,9 @@ export type HistoryState = Readonly<{
     future: AppState[]
 }>
 
+/**
+ * 撤销栈上限，超出后丢弃最早历史快照。
+ */
 export const HISTORY_LIMIT = 200
 
 function traversalChildren(node: NsdNode): NsdNode[] {
@@ -53,6 +56,9 @@ export function findNodeById(root: SequenceNode, nodeId: string | null): NsdNode
     return null
 }
 
+/**
+ * 根据节点类型推导默认选中目标。
+ */
 export function defaultTargetForNode(root: SequenceNode, nodeId: string | null): SelectionTarget | null {
     if (!nodeId) return null
 
@@ -72,6 +78,9 @@ function normalizeTargetKind(root: SequenceNode, target: SelectionTarget): Selec
 
 type NormalizedSelection = Readonly<{ selectedNodeId: string | null; selectedTarget: SelectionTarget | null }>
 
+/**
+ * 规范化 selectedNodeId/selectedTarget，清理失效选中并补齐默认目标。
+ */
 export function normalizeSelection(next: AppState): AppState {
     const root = next.root
     const selectedNodeId0 = next.selectedNodeId
@@ -105,6 +114,9 @@ export function normalizeSelection(next: AppState): AppState {
     return { ...next, selectedNodeId: base.selectedNodeId, selectedTarget: base.selectedTarget }
 }
 
+/**
+ * 提交一次历史记录：写入 past、重置 future，并规范化 present 选中态。
+ */
 export function commitHistory(prev: HistoryState, nextPresent: AppState): HistoryState {
     const normalizedPresent = normalizeSelection(nextPresent)
 
@@ -124,6 +136,9 @@ export function clampScale(value: number): number {
     return Math.round(clamped * 10) / 10
 }
 
+/**
+ * 判断当前选中目标是否允许执行删除操作。
+ */
 export function canDeleteByTarget(target: SelectionTarget | null): boolean {
     if (!target) return false
     if (target.kind === 'node') return true

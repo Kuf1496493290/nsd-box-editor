@@ -93,6 +93,9 @@ function resolveLoopHeight(params: Readonly<{
     return Math.ceil(Math.max(w, fh, need))
 }
 
+/**
+ * 计算 LOOP 节点布局，确保内孔宽高满足主体内容与方形约束。
+ */
 export function layoutLoopNode(params: Readonly<{
     node: LoopNode
     style: StyleConfig

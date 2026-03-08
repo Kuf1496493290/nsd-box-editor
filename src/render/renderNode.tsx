@@ -1,4 +1,3 @@
-// FILE: src/render/renderNode.tsx
 import type { CasePartKey, IfPartKey, SelectionTarget, StyleConfig } from '../app/types'
 import type { LayoutBox } from '../layout/layoutTypes'
 import { RenderProcess } from './renderProcess'

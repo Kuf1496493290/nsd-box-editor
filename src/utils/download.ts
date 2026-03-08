@@ -1,4 +1,3 @@
-// FILE: src/utils/download.ts
 type PickerAcceptType = Readonly<{
     description?: string
     accept: Record<string, string[]>

@@ -1,4 +1,3 @@
-// FILE: src/render/renderCommon.tsx
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import type { StyleConfig } from '../app/types'
 import type { LayoutBox } from '../layout/layoutTypes'

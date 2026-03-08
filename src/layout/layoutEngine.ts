@@ -1,4 +1,3 @@
-// FILE: src/layout/layoutEngine.ts
 import type { NsdNode, SequenceNode, StyleConfig } from '../app/types'
 import type { LayoutBox } from './layoutTypes'
 import {
@@ -152,6 +151,9 @@ function computeSequenceTargetWidth(node: SequenceNode, style: StyleConfig, dept
     return Math.ceil(Math.max(base, forcedWidth ?? 0))
 }
 
+/**
+ * 在有限轮次内收敛序列宽度，直到自然布局不再推动宽度继续增长。
+ */
 function convergeSequenceWidth(
     node: SequenceNode,
     style: StyleConfig,
@@ -356,6 +358,9 @@ function layoutNode(node: NsdNode, style: StyleConfig, depth: number, forcedWidt
     throw new Error('Unsupported node type')
 }
 
+/**
+ * 计算整棵根序列布局，并保证画布最小可见尺寸。
+ */
 export function layoutRoot(root: SequenceNode, style: StyleConfig): LayoutBox {
     const box = layoutSequence(root, style, 0)
     box.x = 0

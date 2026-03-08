@@ -5,7 +5,9 @@ function normalizeText(text: string): string {
     return text.trim().length > 0 ? text : ' '
 }
 
-
+/**
+ * 更新 process 节点文本；空白文本会被规范化为占位空格。
+ */
 export function updateProcessTextInRoot(root: SequenceNode, nodeId: string, text: string): UpdateResult {
     let changed = false
     const nextText = normalizeText(text)
@@ -26,6 +28,9 @@ export function updateProcessTextInRoot(root: SequenceNode, nodeId: string, text
     }
 }
 
+/**
+ * 更新 if 条件文本。
+ */
 export function updateIfConditionTextInRoot(root: SequenceNode, nodeId: string, conditionText: string): UpdateResult {
     let changed = false
     const nextText = normalizeText(conditionText)
@@ -49,6 +54,9 @@ export function updateIfConditionTextInRoot(root: SequenceNode, nodeId: string, 
     }
 }
 
+/**
+ * 更新 case 条件文本。
+ */
 export function updateCaseConditionTextInRoot(root: SequenceNode, nodeId: string, conditionText: string): UpdateResult {
     let changed = false
     const nextText = normalizeText(conditionText)
@@ -72,6 +80,9 @@ export function updateCaseConditionTextInRoot(root: SequenceNode, nodeId: string
     }
 }
 
+/**
+ * 更新 loop 条件文本。
+ */
 export function updateLoopConditionTextInRoot(root: SequenceNode, nodeId: string, conditionText: string): UpdateResult {
     let changed = false
     const nextText = normalizeText(conditionText)
@@ -95,6 +106,9 @@ export function updateLoopConditionTextInRoot(root: SequenceNode, nodeId: string
     }
 }
 
+/**
+ * 更新 CASE 分支标签，并回传分支标签选中态。
+ */
 export function updateCaseBranchLabelInRoot(
     root: SequenceNode,
     caseNodeId: string,
@@ -135,6 +149,9 @@ export function updateCaseBranchLabelInRoot(
     }
 }
 
+/**
+ * 更新 IF 的布尔标签模式（TF/YN）。
+ */
 export function updateIfBoolLabelModeInRoot(root: SequenceNode, nodeId: string, mode: BoolLabelMode): UpdateResult {
     let changed = false
 

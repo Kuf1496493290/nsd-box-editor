@@ -1,4 +1,3 @@
-// FILE: src/app/state.ts
 import { useMemo, useState } from 'react'
 import type { AppState, SelectionTarget } from './types'
 import { createInitialState } from './constants'

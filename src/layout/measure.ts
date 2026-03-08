@@ -1,4 +1,3 @@
-// FILE: src/layout/measure.ts
 import type { StyleConfig } from '../app/types'
 
 let canvas: HTMLCanvasElement | null = null
