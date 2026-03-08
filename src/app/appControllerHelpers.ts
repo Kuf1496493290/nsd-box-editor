@@ -35,6 +35,10 @@ function isCaseConditionTarget(target: SelectionTarget): boolean {
     return target.kind === 'node' || (target.kind === 'casePart' && target.part === 'header')
 }
 
+/**
+ * 解析 CASE 分支新增请求。
+ * 仅当当前选中位于 CASE 头部或分支标签时返回有效请求。
+ */
 export function resolveCaseBranchAddRequest(
     target: SelectionTarget | null,
 ): Readonly<{ nodeId: string; insertAfterBranchIndex?: number }> | null {
@@ -54,6 +58,9 @@ export function resolveCaseBranchAddRequest(
     return null
 }
 
+/**
+ * 根据“节点类型 + 当前选中目标”解析 Enter 键触发的编辑请求。
+ */
 export function pickEnterEditRequest(node: NsdNode, target: SelectionTarget): EnterEditRequest | null {
     if (isCaseBranchLabelTarget(target)) {
         if (node.type !== 'case') return null
@@ -81,6 +88,10 @@ export function pickEnterEditRequest(node: NsdNode, target: SelectionTarget): En
     }
 }
 
+/**
+ * 以锚点节点为基准，按选中语义分发插入位置。
+ * 该方法用于节点上的“插入下一步”入口。
+ */
 export function insertByTarget(anchorNodeId: string, target: SelectionTarget | null, ops: InsertOps) {
     if (target?.nodeId !== anchorNodeId) {
         ops.insertAfter(anchorNodeId)
@@ -135,6 +146,9 @@ export function insertByTarget(anchorNodeId: string, target: SelectionTarget | n
     ops.appendToCaseBranchEnd(anchorNodeId, target.branchIndex)
 }
 
+/**
+ * 按工具栏入口语义分发插入位置；无选中时默认追加到根序列末尾。
+ */
 export function insertFromToolbarTarget(target: SelectionTarget | null, ops: ToolbarInsertOps) {
     if (!target) {
         ops.addAtEnd()

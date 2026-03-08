@@ -17,6 +17,9 @@ function ownerKeyOfContainer(container: DragContainerKey): string {
     }
 }
 
+/**
+ * 在源/目标 children 列表中移动节点，统一处理同列表重排与跨列表迁移。
+ */
 function moveWithinChildren(params: Readonly<{
     sourceChildren: NsdNode[]
     targetChildren: NsdNode[]
@@ -319,7 +322,7 @@ function moveCaseResult(root: SequenceNode, req: Extract<DragMoveRequest, { kind
 }
 
 /**
- * 画布拖拽移动的唯一入口：用于 state.ts -> commitHistory
+ * 画布拖拽移动统一入口：按请求类型分发到节点重排、IF 结果交换或 CASE 分支重排。
  */
 export function applyDragMoveInRoot(root: SequenceNode, req: DragMoveRequest): UpdateResult {
     if (req.kind === 'node') return moveNodeDrag(root, req)

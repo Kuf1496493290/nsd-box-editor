@@ -1,4 +1,3 @@
-// FILE: src/layout/layoutTypes.ts
 import type { NsdNode } from '../app/types'
 
 export type LayoutBoxMeta = Readonly<{

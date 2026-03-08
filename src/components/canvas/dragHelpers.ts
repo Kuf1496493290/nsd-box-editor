@@ -51,6 +51,9 @@ export const OWNER_HIT_MARGIN_X = 6
 export const OWNER_HIT_MARGIN_Y = 24
 export const EDGE_MARGIN_X = 24
 
+/**
+ * 约束画布缩放值到可交互区间，并保留一位小数。
+ */
 export function clampScale(value: number): number {
     const v = Number.isFinite(value) ? value : 1
     const clamped = Math.max(0.5, Math.min(2, v))
@@ -133,6 +136,10 @@ function computeInsertIndexByX(cols: ReadonlyArray<Readonly<{ x: number; w: numb
     return cols.length
 }
 
+/**
+ * 计算 CASE/IF 分支横向重排时的目标插入下标。
+ * 当指针越界或列数不足时返回 null。
+ */
 export function computeReorderInsertIndexByX(cols: ReadonlyArray<Readonly<{ x: number; w: number }>>, x: number, edgeMarginX: number): number | null {
     if (cols.length <= 1) return null
 
@@ -152,6 +159,9 @@ export function computeReorderInsertIndexByX(cols: ReadonlyArray<Readonly<{ x: n
     return x < center ? hovered : hovered + 1
 }
 
+/**
+ * 从布局树构建拖拽索引，供命中检测与拖拽落点计算复用。
+ */
 export function buildDragIndex(rootBox: LayoutBox): DragIndex {
     const containers: ContainerInfo[] = []
     const nodeLocations = new Map<string, NodeLocation>()
@@ -250,6 +260,9 @@ export function buildDragIndex(rootBox: LayoutBox): DragIndex {
     return { containers, nodeLocations, owners }
 }
 
+/**
+ * 将浏览器客户端坐标转换为 SVG 局部坐标。
+ */
 export function clientToSvgPoint(svg: SVGSVGElement, clientX: number, clientY: number): Point {
     const pt = svg.createSVGPoint()
     pt.x = clientX
@@ -262,12 +275,18 @@ export function clientToSvgPoint(svg: SVGSVGElement, clientX: number, clientY: n
     return { x: out.x, y: out.y }
 }
 
+/**
+ * 判断当前选中是否为“整节点选中”语义。
+ */
 export function isWholeNodeSelection(target: SelectionTarget): boolean {
     if (target.kind === 'node') return true
     if (target.kind === 'ifPart') return target.part === 'header'
     return target.kind === 'casePart' && target.part === 'header'
 }
 
+/**
+ * 判断节点类型是否支持整节点高亮框。
+ */
 export function isWholeNodeType(type: string | undefined): boolean {
     return type === 'if' || type === 'case' || type === 'loop'
 }

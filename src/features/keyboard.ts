@@ -1,4 +1,3 @@
-// FILE: src/features/keyboard.ts
 export type KeyboardShortcuts = Readonly<{
     onUndo: () => void
     onRedo: () => void
@@ -91,6 +90,10 @@ function handleActionKey(
     }
 }
 
+/**
+ * 安装全局键盘快捷键，并返回卸载函数。
+ * 会在编辑态或拖拽态下自动忽略业务动作键。
+ */
 export function installKeyboardShortcuts(shortcuts: KeyboardShortcuts): () => void {
     function handleKeyDown(event: KeyboardEvent) {
         if (shortcuts.isDragActive()) return

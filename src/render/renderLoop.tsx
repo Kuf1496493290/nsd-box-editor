@@ -1,4 +1,3 @@
-// FILE: src/render/renderLoop.tsx
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import type { CasePartKey, IfPartKey, SelectionTarget, StyleConfig } from '../app/types'
 import type { LayoutBox } from '../layout/layoutTypes'
@@ -49,6 +48,9 @@ function buildLoopPath(kind: 'while' | 'doWhile', W: number, H: number, a: numbe
     return `M ${wHole} 0 L ${W} 0 L ${W} ${H} L 0 ${H} L 0 ${hHole} L ${wHole} ${hHole} Z`
 }
 
+/**
+ * 渲染 LOOP 节点，包含外框路径、条件条与内孔内容区域。
+ */
 export function RenderLoop(props: RenderLoopProps) {
     const {
         box,

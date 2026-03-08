@@ -1,4 +1,3 @@
-// FILE: src/components/CanvasView.tsx
 import {
     useCallback,
     useEffect,
@@ -35,6 +34,9 @@ import {
 
 const NOOP = () => {}
 
+/**
+ * 拖拽幽灵节点渲染时的占位动作集合，确保渲染层契约完整但不触发交互。
+ */
 const GHOST_RENDER_NODE_ACTIONS = {
     onProcessSelect: NOOP,
     onProcessDoubleClick: NOOP,
@@ -96,6 +98,9 @@ type CanvasViewProps = Readonly<{
     onMoveByDrag: (req: DragMoveRequest) => void
 }>
 
+/**
+ * 画布主视图：负责布局绘制、拖拽交互、悬浮菜单与选中态可视化。
+ */
 export function CanvasView(props: CanvasViewProps) {
     const {
         state,

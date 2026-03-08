@@ -1,4 +1,3 @@
-// FILE: src/app/appController.ts
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import type { DragMoveRequest } from './types'
 import { useAppState } from './state'
@@ -8,6 +7,9 @@ import { findNodeById, resolveCaseBranchAddRequest } from './appControllerHelper
 import { useAppControllerActions } from './appControllerActions'
 import { installKeyboardShortcuts } from '../features/keyboard'
 
+/**
+ * 应用主控制器：聚合状态、编辑器、导入导出、拖拽与快捷键能力。
+ */
 export function useAppController() {
     const {
         state,
@@ -207,6 +209,7 @@ export function useAppController() {
         },
     })
 
+    // 键盘快捷键统一在控制器层安装，避免各组件重复订阅全局事件。
     useEffect(() => {
         return installKeyboardShortcuts({
             onUndo: performUndo,

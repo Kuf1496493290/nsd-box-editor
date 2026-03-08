@@ -1,4 +1,3 @@
-// FILE: src/model/treeOps.ts
 import type { LoopKind, SelectionTarget, SequenceNode } from '../app/types'
 import {
     createCaseNode,
@@ -293,6 +292,10 @@ export function insertDoWhileAfter(root: SequenceNode, nodeId: string): UpdateRe
     return insertLoopAfter(root, nodeId, 'doWhile')
 }
 
+/**
+ * 在指定 CASE 节点中插入分支。
+ * 未传 insertAfterBranchIndex 时追加到末尾；否则插入到目标分支右侧。
+ */
 export function insertCaseBranchInRoot(
     root: SequenceNode,
     caseNodeId: string,
@@ -340,6 +343,9 @@ export function insertCaseBranchInRoot(
     }
 }
 
+/**
+ * 删除 CASE 分支；当分支数不足时保持不变。
+ */
 export function deleteCaseBranchInRoot(root: SequenceNode, caseNodeId: string, branchIndex: number): UpdateResult {
     let changed = false
 
@@ -370,6 +376,9 @@ export function deleteCaseBranchInRoot(root: SequenceNode, caseNodeId: string, b
     }
 }
 
+/**
+ * 按节点 ID 删除节点，删除后清空选中状态。
+ */
 export function deleteNode(root: SequenceNode, nodeId: string): UpdateResult {
     return updateWithinSequence(root, (sequence) => {
         const index = sequence.children.findIndex((node) => node.id === nodeId)

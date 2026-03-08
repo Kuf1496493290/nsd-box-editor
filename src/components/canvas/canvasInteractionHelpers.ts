@@ -1,4 +1,3 @@
-// FILE: src/components/canvas/canvasInteractionHelpers.ts
 import type { Dispatch, RefObject, SetStateAction, PointerEvent as ReactPointerEvent } from 'react'
 import type { CasePartKey, DragContainerKey, DragMoveRequest, IfPartKey } from '../../app/types'
 import type { LayoutBox } from '../../layout/layoutTypes'
@@ -73,6 +72,9 @@ type DragLifecycle = Readonly<{
     finishCaseResultDrag: (drag: Extract<ActiveDrag, { kind: 'caseResult' }>, p: Point) => void
 }>
 
+/**
+ * 创建拖拽生命周期动作：负责选中同步、拖拽启动与落点提交。
+ */
 export function createDragLifecycle(params: Readonly<{
     dragIndex: DragIndex
     setOpenInsertMenuNodeId: (next: string | null | ((prev: string | null) => string | null)) => void
@@ -321,6 +323,9 @@ export function createDragLifecycle(params: Readonly<{
     }
 }
 
+/**
+ * 创建 SVG 指针事件处理器：把 pending/dragging 状态机收敛为统一捕获流程。
+ */
 export function createDragPointerHandlers(params: Readonly<{
     pending: PendingDrag | null
     dragging: ActiveDrag | null
@@ -450,7 +455,7 @@ export function createDragPointerHandlers(params: Readonly<{
             try {
                 svgRef.current?.setPointerCapture(event.pointerId)
             } catch {
-                // Intentionally ignore capture failures.
+                // 指针捕获失败时忽略，不影响后续拖拽流程。
             }
 
             if (pending.kind === 'node') {

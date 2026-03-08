@@ -1,4 +1,3 @@
-// FILE: src/App.tsx
 import { Toolbar } from './components/Toolbar'
 import { CanvasView } from './components/CanvasView'
 import { FloatingTextEditor } from './components/FloatingTextEditor'

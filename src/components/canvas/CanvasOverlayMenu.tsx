@@ -147,6 +147,9 @@ function resolveAnchorRect(
     )
 }
 
+/**
+ * 根据当前选中目标与布局索引，计算悬浮操作菜单的位置与可用状态。
+ */
 // eslint-disable-next-line react-refresh/only-export-components
 export function buildHoverOverlay(params: Readonly<{
     selectedTarget: SelectionTarget | null
@@ -199,6 +202,9 @@ export function buildHoverOverlay(params: Readonly<{
     }
 }
 
+/**
+ * 仅在“整节点选中”时生成顶层高亮框，供画布绘制统一选中态。
+ */
 // eslint-disable-next-line react-refresh/only-export-components
 export function buildTopSelectionBox(selectedTarget: SelectionTarget | null, dragIndex: DragIndex): LayoutBox | null {
     if (!selectedTarget) return null
