@@ -26,5 +26,8 @@ dist-ssr
 # Electron runtime/input folder (keep locally, do not upload)
 electron/
 
+# Build helper assets/scripts (keep locally, do not upload)
+build/
+
 # Electron release artifacts
 release/
