@@ -48,6 +48,7 @@ import {
     updateLoopConditionTextInRoot,
     updateProcessTextInRoot,
 } from '../model/treeOps'
+import { perfLogDuration, perfNow } from '../utils/perf'
 
 type RootUpdateResult = Readonly<{
     root: AppState['root']
@@ -134,31 +135,48 @@ export function createTreeActions(setHistory: SetHistory): TreeActionSet {
      * 用于结构变更：提交后按最新树结构重新规范化选中目标。
      */
     const commitSelectionOp = (op: (present: AppState) => RootUpdateResult) => {
+        const actionStart = perfNow()
         setHistory((prev) => {
             const present = prev.present
+
+            const opStart = perfNow()
             const result = op(present)
+            perfLogDuration('state.selectionOp.treeOp', opStart)
             if (!result.changed) return prev
-            return commitHistory(prev, withSelection(present, result.root, result.selectedNodeId, result.selectedTarget))
+
+            const historyStart = perfNow()
+            const next = commitHistory(prev, withSelection(present, result.root, result.selectedNodeId, result.selectedTarget))
+            perfLogDuration('state.selectionOp.commitHistory', historyStart, { pastSize: next.past.length })
+            return next
         })
+        perfLogDuration('state.selectionOp.total', actionStart)
     }
 
     /**
      * 用于文本变更：保持节点选中连续性，并刷新默认选中目标。
      */
     const commitTextOp = (op: (present: AppState) => RootUpdateResult) => {
+        const actionStart = perfNow()
         setHistory((prev) => {
             const present = prev.present
+
+            const opStart = perfNow()
             const result = op(present)
+            perfLogDuration('state.textOp.treeOp', opStart)
             if (!result.changed) return prev
 
             const nextSelectedNodeId = result.selectedNodeId ?? present.selectedNodeId
-            return commitHistory(prev, {
+            const historyStart = perfNow()
+            const next = commitHistory(prev, {
                 ...present,
                 root: result.root,
                 selectedNodeId: nextSelectedNodeId,
                 selectedTarget: defaultTargetForNode(result.root, nextSelectedNodeId),
             })
+            perfLogDuration('state.textOp.commitHistory', historyStart, { pastSize: next.past.length })
+            return next
         })
+        perfLogDuration('state.textOp.total', actionStart)
     }
 
     function appendProcessToRoot() {
@@ -310,16 +328,26 @@ export function createTreeActions(setHistory: SetHistory): TreeActionSet {
     }
 
     function moveByDrag(req: DragMoveRequest) {
-        commitSelectionOp((present) => applyDragMoveInRoot(present.root, req))
+        const start = perfNow()
+        try {
+            commitSelectionOp((present) => applyDragMoveInRoot(present.root, req))
+        } finally {
+            perfLogDuration('state.moveByDrag', start, { kind: req.kind })
+        }
     }
 
     function deleteNodeById(nodeId: string) {
-        setHistory((prev) => {
-            const present = prev.present
-            const result = deleteNode(present.root, nodeId)
-            if (!result.changed) return prev
-            return commitHistory(prev, withSelection(present, result.root, null, null))
-        })
+        const start = perfNow()
+        try {
+            setHistory((prev) => {
+                const present = prev.present
+                const result = deleteNode(present.root, nodeId)
+                if (!result.changed) return prev
+                return commitHistory(prev, withSelection(present, result.root, null, null))
+            })
+        } finally {
+            perfLogDuration('state.deleteNodeById', start)
+        }
     }
 
     function updateProcessText(nodeId: string, text: string) {

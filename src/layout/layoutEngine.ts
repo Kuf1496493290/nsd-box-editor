@@ -8,11 +8,52 @@ import {
     requiredWidth,
     softMinWidth,
     sumNumbers,
+    withRequiredWidthCache,
 } from './layoutCommon'
 import { layoutCaseNode, layoutIfNode } from './layoutBranchLayout'
+import { withBranchAnalysisCache } from './layoutBranchHelpers'
 import { layoutLoopNode } from './layoutLoopLayout'
+import { perfLogDuration, perfNow } from '../utils/perf'
 
 const BORDER_GAP = 0
+let activeLayoutNodeCache: Map<string, LayoutBox> | null = null
+let activeNaturalSequenceCache: Map<string, LayoutBox[]> | null = null
+
+function layoutNodeCacheKey(node: NsdNode, depth: number, forcedWidth?: number, forcedHeight?: number): string {
+    const widthKey = forcedWidth === undefined ? 'u' : String(Math.max(0, Math.ceil(forcedWidth)))
+    const heightKey = forcedHeight === undefined ? 'u' : String(Math.max(0, Math.ceil(forcedHeight)))
+    return `${node.id}|${depth}|${widthKey}|${heightKey}`
+}
+
+function cloneLayoutBox(box: LayoutBox): LayoutBox {
+    return {
+        ...box,
+        children: box.children.map((child) => cloneLayoutBox(child)),
+        meta: box.meta ? { ...box.meta } : box.meta,
+    }
+}
+
+function withLayoutNodeCache<T>(run: () => T): T {
+    const prevLayoutNodeCache = activeLayoutNodeCache
+    const prevNaturalSequenceCache = activeNaturalSequenceCache
+    activeLayoutNodeCache = new Map<string, LayoutBox>()
+    activeNaturalSequenceCache = new Map<string, LayoutBox[]>()
+
+    try {
+        return run()
+    } finally {
+        activeLayoutNodeCache = prevLayoutNodeCache
+        activeNaturalSequenceCache = prevNaturalSequenceCache
+    }
+}
+
+function naturalSequenceCacheKey(node: SequenceNode, depth: number, width: number): string {
+    return `${node.id}|${depth}|${Math.max(0, Math.ceil(width))}`
+}
+
+function cloneLayoutBoxes(boxes: ReadonlyArray<LayoutBox>): LayoutBox[] {
+    return boxes.map((b) => cloneLayoutBox(b))
+}
 
 function layoutProcessAtWidth(
     node: Extract<NsdNode, { type: 'process' }>,
@@ -51,10 +92,21 @@ function buildNaturalSequenceBoxes(
     width: number,
 ): LayoutBox[] {
     const w = Math.max(0, Math.ceil(width))
-    return node.children.map((c) => {
+    const cache = activeNaturalSequenceCache
+    const cacheKey = cache ? naturalSequenceCacheKey(node, depth, w) : null
+
+    if (cache && cacheKey) {
+        const cached = cache.get(cacheKey)
+        if (cached) return cloneLayoutBoxes(cached)
+    }
+
+    const boxes = node.children.map((c) => {
         const childW = childForcedWidthInSequence(node, depth, c, w)
         return layoutNode(c, style, depth, childW)
     })
+
+    if (cache && cacheKey) cache.set(cacheKey, cloneLayoutBoxes(boxes))
+    return boxes
 }
 
 function layoutSequenceChildAtSlot(params: Readonly<{
@@ -161,6 +213,7 @@ function convergeSequenceWidth(
     startWidth: number,
     passes: number,
 ): ConvergedSequence {
+    const start = perfNow()
     let width = Math.max(0, Math.ceil(startWidth))
     const maxPasses = Math.max(1, Math.min(6, Math.floor(passes)))
 
@@ -171,10 +224,22 @@ function convergeSequenceWidth(
             width = Math.ceil(maxNaturalW)
             continue
         }
+
+        perfLogDuration('layout.convergeSequenceWidth', start, {
+            depth,
+            childCount: node.children.length,
+            passes: pass + 1,
+        })
         return { width, naturalBoxes }
     }
 
     const naturalBoxes = buildNaturalSequenceBoxes(node, style, depth, width)
+    perfLogDuration('layout.convergeSequenceWidth', start, {
+        depth,
+        childCount: node.children.length,
+        passes: maxPasses,
+        hitMaxPasses: true,
+    })
     return { width, naturalBoxes }
 }
 
@@ -332,41 +397,52 @@ function layoutSequence(
 }
 
 function layoutNode(node: NsdNode, style: StyleConfig, depth: number, forcedWidth?: number, forcedHeight?: number): LayoutBox {
+    const cache = activeLayoutNodeCache
+    const cacheKey = cache ? layoutNodeCacheKey(node, depth, forcedWidth, forcedHeight) : null
+    if (cache && cacheKey) {
+        const cached = cache.get(cacheKey)
+        if (cached) return cloneLayoutBox(cached)
+    }
+
     const need = requiredWidth(node, style, depth)
     const w = Math.max(need, forcedWidth ?? 0)
 
+    let box: LayoutBox
+
     if (node.type === 'process') {
-        return layoutProcessAtWidth(node, style, w, forcedHeight)
+        box = layoutProcessAtWidth(node, style, w, forcedHeight)
+    } else if (node.type === 'sequence') {
+        box = layoutSequence(node, style, depth, w, forcedHeight)
+    } else if (node.type === 'if') {
+        box = layoutIfNode({ node, style, depth, forcedWidth: w, forcedHeight, layoutNode })
+    } else if (node.type === 'case') {
+        box = layoutCaseNode({ node, style, depth, forcedWidth: w, forcedHeight, layoutNode })
+    } else if (node.type === 'loop') {
+        box = layoutLoopNode({ node, style, depth, forcedWidth: w, forcedHeight, layoutSequence })
+    } else {
+        throw new Error('Unsupported node type')
     }
 
-    if (node.type === 'sequence') {
-        return layoutSequence(node, style, depth, w, forcedHeight)
-    }
-
-    if (node.type === 'if') {
-        return layoutIfNode({ node, style, depth, forcedWidth: w, forcedHeight, layoutNode })
-    }
-
-    if (node.type === 'case') {
-        return layoutCaseNode({ node, style, depth, forcedWidth: w, forcedHeight, layoutNode })
-    }
-
-    if (node.type === 'loop') {
-        return layoutLoopNode({ node, style, depth, forcedWidth: w, forcedHeight, layoutSequence })
-    }
-
-    throw new Error('Unsupported node type')
+    if (cache && cacheKey) cache.set(cacheKey, cloneLayoutBox(box))
+    return box
 }
 
 /**
  * 计算整棵根序列布局，并保证画布最小可见尺寸。
  */
 export function layoutRoot(root: SequenceNode, style: StyleConfig): LayoutBox {
-    const box = layoutSequence(root, style, 0)
+    const start = perfNow()
+    const box = withRequiredWidthCache(() => withBranchAnalysisCache(() => withLayoutNodeCache(() => layoutSequence(root, style, 0))))
     box.x = 0
     box.y = 0
     const rootMinW = Math.max(48, Math.ceil(style.minBlockWidth / 4))
     box.width = Math.max(box.width, rootMinW)
     box.height = Math.max(box.height, style.fontSize * 2)
+
+    perfLogDuration('layout.layoutRoot', start, {
+        topLevelChildren: root.children.length,
+        width: box.width,
+        height: box.height,
+    })
     return box
 }

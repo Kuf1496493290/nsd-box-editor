@@ -14,6 +14,7 @@ import {
     pickEnterEditRequest,
     type EditingKind,
 } from './appControllerHelpers'
+import { perfLogDuration, perfNow } from '../utils/perf'
 
 /**
  * CASE 分支新增请求；为空时表示当前选中态不支持新增分支。
@@ -256,35 +257,40 @@ export function useAppControllerActions(params: Readonly<{
     }, [editor, state.root, stateFns])
 
     const onEditorConfirm = useCallback((nextText: string) => {
-        if (!editingNodeId) return
+        const start = perfNow()
+        try {
+            if (!editingNodeId) return
 
-        /*
-         * 文本保存按编辑类型分发到不同更新入口，确保各节点字段写入语义稳定。
-         * caseBranchLabel 依赖 editingBranchIndex，因此在前置分支全部不命中后单独处理。
-         */
-        if (editingKind === 'process') {
-            stateFns.updateProcessText(editingNodeId, nextText)
+            /*
+             * 文本保存按编辑类型分发到不同更新入口，确保各节点字段写入语义稳定。
+             * caseBranchLabel 依赖 editingBranchIndex，因此在前置分支全部不命中后单独处理。
+             */
+            if (editingKind === 'process') {
+                stateFns.updateProcessText(editingNodeId, nextText)
+                editor.closeEditor()
+                return
+            }
+            if (editingKind === 'ifCondition') {
+                stateFns.updateIfConditionText(editingNodeId, nextText)
+                editor.closeEditor()
+                return
+            }
+            if (editingKind === 'caseCondition') {
+                stateFns.updateCaseConditionText(editingNodeId, nextText)
+                editor.closeEditor()
+                return
+            }
+            if (editingKind === 'loopCondition') {
+                stateFns.updateLoopConditionText(editingNodeId, nextText)
+                editor.closeEditor()
+                return
+            }
+            if (editingBranchIndex === null) return
+            stateFns.updateCaseBranchLabel(editingNodeId, editingBranchIndex, nextText)
             editor.closeEditor()
-            return
+        } finally {
+            perfLogDuration('action.onEditorConfirm', start, { kind: editingKind })
         }
-        if (editingKind === 'ifCondition') {
-            stateFns.updateIfConditionText(editingNodeId, nextText)
-            editor.closeEditor()
-            return
-        }
-        if (editingKind === 'caseCondition') {
-            stateFns.updateCaseConditionText(editingNodeId, nextText)
-            editor.closeEditor()
-            return
-        }
-        if (editingKind === 'loopCondition') {
-            stateFns.updateLoopConditionText(editingNodeId, nextText)
-            editor.closeEditor()
-            return
-        }
-        if (editingBranchIndex === null) return
-        stateFns.updateCaseBranchLabel(editingNodeId, editingBranchIndex, nextText)
-        editor.closeEditor()
     }, [editingBranchIndex, editingKind, editingNodeId, editor, stateFns])
 
     const onCanvasBlankClick = useCallback(() => {
@@ -293,58 +299,83 @@ export function useAppControllerActions(params: Readonly<{
     }, [editor, stateFns])
 
     const onInsertProcessAtSelection = useCallback((nodeId: string) => {
-        insertByTarget(nodeId, state.selectedTarget, {
-            insertAfter: insertActions.addProcessAfter,
-            prependToIfBranch: insertActions.prependProcessInIfBranch,
-            appendToIfBranchEnd: insertActions.addProcessToIfBranchEnd,
-            prependToCaseBranch: insertActions.prependProcessInCaseBranch,
-            appendToCaseBranchEnd: insertActions.addProcessToCaseBranchEnd,
-            prependToLoopBody: insertActions.prependProcessInLoopBody,
-        })
+        const start = perfNow()
+        try {
+            insertByTarget(nodeId, state.selectedTarget, {
+                insertAfter: insertActions.addProcessAfter,
+                prependToIfBranch: insertActions.prependProcessInIfBranch,
+                appendToIfBranchEnd: insertActions.addProcessToIfBranchEnd,
+                prependToCaseBranch: insertActions.prependProcessInCaseBranch,
+                appendToCaseBranchEnd: insertActions.addProcessToCaseBranchEnd,
+                prependToLoopBody: insertActions.prependProcessInLoopBody,
+            })
+        } finally {
+            perfLogDuration('action.insertProcess', start)
+        }
     }, [insertActions, state.selectedTarget])
 
     const onInsertIfAtSelection = useCallback((nodeId: string) => {
-        insertByTarget(nodeId, state.selectedTarget, {
-            insertAfter: insertActions.addIfAfter,
-            prependToIfBranch: insertActions.prependIfInIfBranch,
-            appendToIfBranchEnd: insertActions.addIfToIfBranchEnd,
-            prependToCaseBranch: insertActions.prependIfInCaseBranch,
-            appendToCaseBranchEnd: insertActions.addIfToCaseBranchEnd,
-            prependToLoopBody: insertActions.prependIfInLoopBody,
-        })
+        const start = perfNow()
+        try {
+            insertByTarget(nodeId, state.selectedTarget, {
+                insertAfter: insertActions.addIfAfter,
+                prependToIfBranch: insertActions.prependIfInIfBranch,
+                appendToIfBranchEnd: insertActions.addIfToIfBranchEnd,
+                prependToCaseBranch: insertActions.prependIfInCaseBranch,
+                appendToCaseBranchEnd: insertActions.addIfToCaseBranchEnd,
+                prependToLoopBody: insertActions.prependIfInLoopBody,
+            })
+        } finally {
+            perfLogDuration('action.insertIf', start)
+        }
     }, [insertActions, state.selectedTarget])
 
     const onInsertCaseAtSelection = useCallback((nodeId: string) => {
-        insertByTarget(nodeId, state.selectedTarget, {
-            insertAfter: insertActions.addCaseAfter,
-            prependToIfBranch: insertActions.prependCaseInIfBranch,
-            appendToIfBranchEnd: insertActions.addCaseToIfBranchEnd,
-            prependToCaseBranch: insertActions.prependCaseInCaseBranch,
-            appendToCaseBranchEnd: insertActions.addCaseToCaseBranchEnd,
-            prependToLoopBody: insertActions.prependCaseInLoopBody,
-        })
+        const start = perfNow()
+        try {
+            insertByTarget(nodeId, state.selectedTarget, {
+                insertAfter: insertActions.addCaseAfter,
+                prependToIfBranch: insertActions.prependCaseInIfBranch,
+                appendToIfBranchEnd: insertActions.addCaseToIfBranchEnd,
+                prependToCaseBranch: insertActions.prependCaseInCaseBranch,
+                appendToCaseBranchEnd: insertActions.addCaseToCaseBranchEnd,
+                prependToLoopBody: insertActions.prependCaseInLoopBody,
+            })
+        } finally {
+            perfLogDuration('action.insertCase', start)
+        }
     }, [insertActions, state.selectedTarget])
 
     const onInsertWhileAtSelection = useCallback((nodeId: string) => {
-        insertByTarget(nodeId, state.selectedTarget, {
-            insertAfter: insertActions.addWhileAfter,
-            prependToIfBranch: insertActions.prependWhileInIfBranch,
-            appendToIfBranchEnd: insertActions.addWhileToIfBranchEnd,
-            prependToCaseBranch: insertActions.prependWhileInCaseBranch,
-            appendToCaseBranchEnd: insertActions.addWhileToCaseBranchEnd,
-            prependToLoopBody: insertActions.prependWhileInLoopBody,
-        })
+        const start = perfNow()
+        try {
+            insertByTarget(nodeId, state.selectedTarget, {
+                insertAfter: insertActions.addWhileAfter,
+                prependToIfBranch: insertActions.prependWhileInIfBranch,
+                appendToIfBranchEnd: insertActions.addWhileToIfBranchEnd,
+                prependToCaseBranch: insertActions.prependWhileInCaseBranch,
+                appendToCaseBranchEnd: insertActions.addWhileToCaseBranchEnd,
+                prependToLoopBody: insertActions.prependWhileInLoopBody,
+            })
+        } finally {
+            perfLogDuration('action.insertWhile', start)
+        }
     }, [insertActions, state.selectedTarget])
 
     const onInsertDoWhileAtSelection = useCallback((nodeId: string) => {
-        insertByTarget(nodeId, state.selectedTarget, {
-            insertAfter: insertActions.addDoWhileAfter,
-            prependToIfBranch: insertActions.prependDoWhileInIfBranch,
-            appendToIfBranchEnd: insertActions.addDoWhileToIfBranchEnd,
-            prependToCaseBranch: insertActions.prependDoWhileInCaseBranch,
-            appendToCaseBranchEnd: insertActions.addDoWhileToCaseBranchEnd,
-            prependToLoopBody: insertActions.prependDoWhileInLoopBody,
-        })
+        const start = perfNow()
+        try {
+            insertByTarget(nodeId, state.selectedTarget, {
+                insertAfter: insertActions.addDoWhileAfter,
+                prependToIfBranch: insertActions.prependDoWhileInIfBranch,
+                appendToIfBranchEnd: insertActions.addDoWhileToIfBranchEnd,
+                prependToCaseBranch: insertActions.prependDoWhileInCaseBranch,
+                appendToCaseBranchEnd: insertActions.addDoWhileToCaseBranchEnd,
+                prependToLoopBody: insertActions.prependDoWhileInLoopBody,
+            })
+        } finally {
+            perfLogDuration('action.insertDoWhile', start)
+        }
     }, [insertActions, state.selectedTarget])
 
     const onAddCaseBranch = useCallback((caseId: string, insertAfterBranchIndex?: number) => {
@@ -352,25 +383,30 @@ export function useAppControllerActions(params: Readonly<{
     }, [performAddCaseBranch])
 
     const onDeleteSelected = useCallback(() => {
-        if (!canDeleteSelected) return
+        const start = perfNow()
+        try {
+            if (!canDeleteSelected) return
 
-        const target = state.selectedTarget
-        const node = selectedNode
-        if (!node || !target) return
+            const target = state.selectedTarget
+            const node = selectedNode
+            if (!node || !target) return
 
-        /*
-         * 删除动作先解析意图，再执行具体 mutation，避免各类选中态分支在 UI 层重复实现。
-         */
-        const intent = resolveDeleteIntent(target, node)
-        if (intent.kind === 'none') return
+            /*
+             * 删除动作先解析意图，再执行具体 mutation，避免各类选中态分支在 UI 层重复实现。
+             */
+            const intent = resolveDeleteIntent(target, node)
+            if (intent.kind === 'none') return
 
-        editor.closeEditor()
-        if (intent.kind === 'deleteCaseBranch') {
-            mutationFns.deleteCaseBranch(node.id, intent.branchIndex)
-            return
+            editor.closeEditor()
+            if (intent.kind === 'deleteCaseBranch') {
+                mutationFns.deleteCaseBranch(node.id, intent.branchIndex)
+                return
+            }
+
+            mutationFns.deleteNodeById(node.id)
+        } finally {
+            perfLogDuration('action.onDeleteSelected', start)
         }
-
-        mutationFns.deleteNodeById(node.id)
     }, [canDeleteSelected, editor, mutationFns, selectedNode, state.selectedTarget])
 
     const onToolbarInsertProcess = useCallback(() => {

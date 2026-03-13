@@ -23,5 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 
+# Electron runtime/input folder (keep locally, do not upload)
+electron/
+
 # Electron release artifacts
 release/

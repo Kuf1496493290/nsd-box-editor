@@ -1,5 +1,6 @@
 import type { DragContainerKey, SelectionTarget } from '../../app/types'
 import type { LayoutBox } from '../../layout/layoutTypes'
+import { perfLogDuration, perfNow } from '../../utils/perf'
 
 export type Point = Readonly<{ x: number; y: number }>
 
@@ -163,6 +164,7 @@ export function computeReorderInsertIndexByX(cols: ReadonlyArray<Readonly<{ x: n
  * 从布局树构建拖拽索引，供命中检测与拖拽落点计算复用。
  */
 export function buildDragIndex(rootBox: LayoutBox): DragIndex {
+    const start = perfNow()
     const containers: ContainerInfo[] = []
     const nodeLocations = new Map<string, NodeLocation>()
     const owners = new Map<string, AbsOwnerBox>()
@@ -257,6 +259,11 @@ export function buildDragIndex(rootBox: LayoutBox): DragIndex {
     }
 
     walkBox(rootBox, 0, 0, { kind: 'root' })
+    perfLogDuration('drag.buildDragIndex', start, {
+        containers: containers.length,
+        nodeLocations: nodeLocations.size,
+        owners: owners.size,
+    })
     return { containers, nodeLocations, owners }
 }
 

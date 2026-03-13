@@ -14,6 +14,7 @@ import {
     type DragIndex,
     type Point,
 } from './dragHelpers'
+import { perfEnabled, perfLogDuration, perfNow } from '../../utils/perf'
 
 export type PendingDrag =
     | Readonly<{ kind: 'node'; pointerId: number; nodeId: string; startClientX: number; startClientY: number }>
@@ -255,22 +256,37 @@ export function createDragLifecycle(params: Readonly<{
     }
 
     function finishNodeDrag(d: Extract<ActiveDrag, { kind: 'node' }>, p: Point) {
+        const start = perfNow()
         const targetContainer = pickDeepestContainer(dragIndex.containers, p, d.fromOwnerKey)
-        if (!targetContainer) return
+        if (!targetContainer) {
+            perfLogDuration('drag.finishNodeDrag', start, { dropped: false })
+            return
+        }
 
         const to = targetContainer.key
-        if (ownerKeyOfContainer(to) !== d.fromOwnerKey) return
+        if (ownerKeyOfContainer(to) !== d.fromOwnerKey) {
+            perfLogDuration('drag.finishNodeDrag', start, { dropped: false, ownerMismatch: true })
+            return
+        }
 
         const toIndex = computeInsertIndexByY(targetContainer, p)
         onMoveByDrag({ kind: 'node', nodeId: d.nodeId, from: d.from, to, toIndex })
+        perfLogDuration('drag.finishNodeDrag', start, { dropped: true })
     }
 
     function finishIfResultDrag(d: Extract<ActiveDrag, { kind: 'ifResult' }>, p: Point) {
+        const start = perfNow()
         const owner = dragIndex.owners.get(d.ifId)
-        if (owner?.box.node.type !== 'if') return
+        if (owner?.box.node.type !== 'if') {
+            perfLogDuration('drag.finishIfResultDrag', start, { dropped: false })
+            return
+        }
 
         const rect = { x: owner.absX, y: owner.absY, w: owner.width, h: owner.height }
-        if (!isPointInRectWithMarginXY(p, rect, OWNER_HIT_MARGIN_X, OWNER_HIT_MARGIN_Y)) return
+        if (!isPointInRectWithMarginXY(p, rect, OWNER_HIT_MARGIN_X, OWNER_HIT_MARGIN_Y)) {
+            perfLogDuration('drag.finishIfResultDrag', start, { dropped: false, outOfOwner: true })
+            return
+        }
 
         const ifBox = owner.box
         const leftW = Math.max(0, Math.ceil(ifBox.children[1]?.x ?? ifBox.width / 2))
@@ -282,32 +298,53 @@ export function createDragLifecycle(params: Readonly<{
         ] as const
 
         const rawToIndex = computeReorderInsertIndexByX(cols, p.x, EDGE_MARGIN_X)
-        if (rawToIndex === null) return
+        if (rawToIndex === null) {
+            perfLogDuration('drag.finishIfResultDrag', start, { dropped: false, outOfEdge: true })
+            return
+        }
 
         const fromIndex = d.fromBranch === 'true' ? 0 : 1
         const toIndex = clampInt(rawToIndex, 0, 2)
 
-        if (toIndex === fromIndex || toIndex === fromIndex + 1) return
+        if (toIndex === fromIndex || toIndex === fromIndex + 1) {
+            perfLogDuration('drag.finishIfResultDrag', start, { dropped: false, noMove: true })
+            return
+        }
 
         const toBranch: 'true' | 'false' = d.fromBranch === 'true' ? 'false' : 'true'
         onMoveByDrag({ kind: 'ifResult', nodeId: d.ifId, fromBranch: d.fromBranch, toBranch })
+        perfLogDuration('drag.finishIfResultDrag', start, { dropped: true })
     }
 
     function finishCaseResultDrag(d: Extract<ActiveDrag, { kind: 'caseResult' }>, p: Point) {
+        const start = perfNow()
         const owner = dragIndex.owners.get(d.caseId)
-        if (owner?.box.node.type !== 'case') return
+        if (owner?.box.node.type !== 'case') {
+            perfLogDuration('drag.finishCaseResultDrag', start, { dropped: false })
+            return
+        }
 
         const rect = { x: owner.absX, y: owner.absY, w: owner.width, h: owner.height }
-        if (!isPointInRectWithMarginXY(p, rect, OWNER_HIT_MARGIN_X, OWNER_HIT_MARGIN_Y)) return
+        if (!isPointInRectWithMarginXY(p, rect, OWNER_HIT_MARGIN_X, OWNER_HIT_MARGIN_Y)) {
+            perfLogDuration('drag.finishCaseResultDrag', start, { dropped: false, outOfOwner: true })
+            return
+        }
 
         const cols = owner.box.children.map((b) => ({ x: owner.absX + b.x, w: b.width }))
         const rawToIndex = computeReorderInsertIndexByX(cols, p.x, EDGE_MARGIN_X)
-        if (rawToIndex === null) return
+        if (rawToIndex === null) {
+            perfLogDuration('drag.finishCaseResultDrag', start, { dropped: false, outOfEdge: true })
+            return
+        }
 
         const toIndex = clampInt(rawToIndex, 0, cols.length)
-        if (toIndex === d.fromBranchIndex || toIndex === d.fromBranchIndex + 1) return
+        if (toIndex === d.fromBranchIndex || toIndex === d.fromBranchIndex + 1) {
+            perfLogDuration('drag.finishCaseResultDrag', start, { dropped: false, noMove: true })
+            return
+        }
 
         onMoveByDrag({ kind: 'caseResult', nodeId: d.caseId, fromBranchIndex: d.fromBranchIndex, toIndex })
+        perfLogDuration('drag.finishCaseResultDrag', start, { dropped: true })
     }
 
     return {
@@ -366,6 +403,25 @@ export function createDragPointerHandlers(params: Readonly<{
         restoreHiddenIfColumnIfAny,
         restoreHiddenCaseColumnIfAny,
     } = params
+
+    let pointerMoveWindowStartMs = 0
+    let pointerMoveCount = 0
+
+    function samplePointerMoveRate(): void {
+        if (!perfEnabled()) return
+
+        const now = perfNow()
+        if (pointerMoveWindowStartMs <= 0) pointerMoveWindowStartMs = now
+
+        pointerMoveCount += 1
+        const elapsed = now - pointerMoveWindowStartMs
+        if (elapsed < 1000) return
+
+        const perSecond = Math.round((pointerMoveCount * 1000) / Math.max(1, elapsed))
+        console.info(`[perf] pointermove ${perSecond}/s`)
+        pointerMoveWindowStartMs = now
+        pointerMoveCount = 0
+    }
 
     function tryStartPendingIfResult(event: ReactPointerEvent<SVGSVGElement>, target: Element): boolean {
         const ifEl = target.closest<SVGGraphicsElement>('[data-drag-if-id][data-drag-if-branch]')
@@ -439,6 +495,7 @@ export function createDragPointerHandlers(params: Readonly<{
     }
 
     function handlePointerMoveCapture(event: ReactPointerEvent<SVGSVGElement>) {
+        samplePointerMoveRate()
         const p = getContentPoint(event)
         if (!p) return
 
@@ -478,7 +535,9 @@ export function createDragPointerHandlers(params: Readonly<{
         if (!dragging) return
 
         event.preventDefault()
+        const dragMoveStart = perfNow()
         setDragging((prev) => (prev ? ({ ...prev, pointerX: p.x, pointerY: p.y } as ActiveDrag) : prev))
+        perfLogDuration('drag.pointerMove.setDragging', dragMoveStart)
     }
 
     function handlePointerUpCapture(event: ReactPointerEvent<SVGSVGElement>) {

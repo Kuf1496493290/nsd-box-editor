@@ -44,6 +44,96 @@ export type StabilizeResult = Readonly<{
 
 export type CaseHeightDecision = Readonly<{ headerH: number; labelH: number; bodyH: number }>
 
+let activeBranchAnalysisCache: Map<string, BranchAnalysis> | null = null
+let activeBranchNonLoopProfileCache: Map<string, NonLoopProfile> | null = null
+
+function branchAnalysisCacheKey(branch: SequenceNode, depth: number, width: number): string {
+    return `${branch.id}|${depth}|${Math.max(0, Math.ceil(width))}`
+}
+
+export function withBranchAnalysisCache<T>(run: () => T): T {
+    const prevAnalysis = activeBranchAnalysisCache
+    const prevProfile = activeBranchNonLoopProfileCache
+    activeBranchAnalysisCache = new Map<string, BranchAnalysis>()
+    activeBranchNonLoopProfileCache = new Map<string, NonLoopProfile>()
+
+    try {
+        return run()
+    } finally {
+        activeBranchAnalysisCache = prevAnalysis
+        activeBranchNonLoopProfileCache = prevProfile
+    }
+}
+
+type BranchScanState = {
+    loopCount: number
+    supportCount: number
+    nonLoopCount: number
+    nonLoopMinSum: number
+    loopMaxMinSide: number
+    maxMinH: number
+}
+
+function emptyBranchAnalysis(): BranchAnalysis {
+    return {
+        loopCount: 0,
+        supportCount: 0,
+        nonLoopCount: 0,
+        nonLoopMinSum: 0,
+        loopMaxMinSide: 0,
+        minEqualSlotTotal: 0,
+    }
+}
+
+function createBranchScanState(): BranchScanState {
+    return {
+        loopCount: 0,
+        supportCount: 0,
+        nonLoopCount: 0,
+        nonLoopMinSum: 0,
+        loopMaxMinSide: 0,
+        maxMinH: 0,
+    }
+}
+
+function scanLoopChild(state: BranchScanState, child: Extract<NsdNode, { type: 'loop' }>, style: StyleConfig, depth: number): void {
+    const loopMin = Math.max(0, Math.ceil(requiredLoopSide(child, style, depth)))
+    state.loopCount += 1
+    state.loopMaxMinSide = Math.max(state.loopMaxMinSide, loopMin)
+    state.maxMinH = Math.max(state.maxMinH, loopMin)
+}
+
+function scanNonLoopChild(
+    state: BranchScanState,
+    child: Exclude<NsdNode, { type: 'loop' }>,
+    style: StyleConfig,
+    depth: number,
+    width: number,
+    layoutNode: LayoutNodeFn,
+): void {
+    const box = layoutNode(child, style, depth, width)
+    state.maxMinH = Math.max(state.maxMinH, Math.max(0, Math.ceil(box.height)))
+
+    if (child.type === 'process') {
+        state.supportCount += 1
+        return
+    }
+
+    state.nonLoopCount += 1
+    state.nonLoopMinSum += box.height
+}
+
+function buildBranchAnalysisFromScan(state: BranchScanState, style: StyleConfig, childCount: number): BranchAnalysis {
+    return {
+        loopCount: state.loopCount,
+        supportCount: state.supportCount,
+        nonLoopCount: state.nonLoopCount,
+        nonLoopMinSum: Math.ceil(state.nonLoopMinSum),
+        loopMaxMinSide: Math.ceil(state.loopMaxMinSide),
+        minEqualSlotTotal: Math.ceil(Math.max(state.maxMinH, baseBlockHeight(style)) * childCount),
+    }
+}
+
 function analyzeBranchTopLevel(
     branch: SequenceNode,
     style: StyleConfig,
@@ -51,55 +141,78 @@ function analyzeBranchTopLevel(
     width: number,
     layoutNode: LayoutNodeFn,
 ): BranchAnalysis {
-    if (branch.children.length === 0) {
-        return {
-            loopCount: 0,
-            supportCount: 0,
-            nonLoopCount: 0,
-            nonLoopMinSum: 0,
-            loopMaxMinSide: 0,
-            minEqualSlotTotal: 0,
-        }
+    const cache = activeBranchAnalysisCache
+    const cacheKey = cache ? branchAnalysisCacheKey(branch, depth, width) : null
+    if (cache && cacheKey) {
+        const cached = cache.get(cacheKey)
+        if (cached) return cached
     }
 
-    const w = Math.max(0, Math.ceil(width))
+    const result = (() => {
+        if (branch.children.length === 0) return emptyBranchAnalysis()
 
-    let loopCount = 0
-    let supportCount = 0
-    let nonLoopCount = 0
-    let nonLoopMinSum = 0
-    let loopMaxMinSide = 0
-    let maxMinH = 0
+        const w = Math.max(0, Math.ceil(width))
+        const state = createBranchScanState()
 
-    for (const child of branch.children) {
-        if (child.type === 'loop') {
-            const loopMin = Math.max(0, Math.ceil(requiredLoopSide(child, style, depth)))
-            loopCount += 1
-            loopMaxMinSide = Math.max(loopMaxMinSide, loopMin)
-            maxMinH = Math.max(maxMinH, loopMin)
-            continue
+        for (const child of branch.children) {
+            if (child.type === 'loop') {
+                scanLoopChild(state, child, style, depth)
+                continue
+            }
+
+            scanNonLoopChild(state, child, style, depth, w, layoutNode)
         }
 
-        const box = layoutNode(child, style, depth, w)
-        maxMinH = Math.max(maxMinH, Math.max(0, Math.ceil(box.height)))
+        return buildBranchAnalysisFromScan(state, style, branch.children.length)
+    })()
 
-        if (child.type === 'process') {
-            supportCount += 1
-            continue
-        }
+    if (cache && cacheKey) cache.set(cacheKey, result)
+    return result
+}
 
-        nonLoopCount += 1
-        nonLoopMinSum += box.height
+type NonLoopProfile = Readonly<{
+    minHeights: number[]
+    supportFlags: boolean[]
+    rigidMinSum: number
+    supportMinSum: number
+}>
+
+function computeNonLoopProfile(
+    branch: SequenceNode,
+    style: StyleConfig,
+    depth: number,
+    width: number,
+    layoutNode: LayoutNodeFn,
+): NonLoopProfile {
+    const key = branchAnalysisCacheKey(branch, depth, width)
+    const cache = activeBranchNonLoopProfileCache
+    if (cache) {
+        const cached = cache.get(key)
+        if (cached) return cached
     }
 
-    return {
-        loopCount,
-        supportCount,
-        nonLoopCount,
-        nonLoopMinSum: Math.ceil(nonLoopMinSum),
-        loopMaxMinSide: Math.ceil(loopMaxMinSide),
-        minEqualSlotTotal: Math.ceil(Math.max(maxMinH, baseBlockHeight(style)) * branch.children.length),
+    const nonLoopChildren = branch.children.filter((c) => c.type !== 'loop')
+    const supportFlags = nonLoopChildren.map((c) => c.type === 'process')
+    const minHeights = nonLoopChildren.map((c) => layoutNode(c, style, depth, width).height)
+
+    let rigidMinSum = 0
+    let supportMinSum = 0
+
+    for (let i = 0; i < minHeights.length; i += 1) {
+        const minH = Math.max(0, Math.ceil(minHeights[i] ?? 0))
+        if (supportFlags[i]) supportMinSum += minH
+        else rigidMinSum += minH
     }
+
+    const profile: NonLoopProfile = {
+        minHeights,
+        supportFlags,
+        rigidMinSum,
+        supportMinSum,
+    }
+
+    if (cache) cache.set(key, profile)
+    return profile
 }
 
 function computeFlexUnits(analysis: BranchAnalysis): number {
@@ -217,18 +330,12 @@ export function layoutBranchSequence(
         return { id: branch.id, node: branch, x: 0, y: 0, width: w, height: h, children: boxes }
     }
 
-    const nonLoopChildren = branch.children.filter((c) => c.type !== 'loop')
-    const nonLoopMinHeights = nonLoopChildren.map((c) => layoutNode(c, style, depth, w).height)
-    const supportFlags = nonLoopChildren.map((c) => c.type === 'process')
+    const profile = computeNonLoopProfile(branch, style, depth, w, layoutNode)
+    const nonLoopMinHeights = profile.minHeights
+    const supportFlags = profile.supportFlags
 
-    let rigidMinSum = 0
-    let supportMinSum = 0
-
-    for (let i = 0; i < nonLoopChildren.length; i += 1) {
-        const minH = Math.max(0, Math.ceil(nonLoopMinHeights[i] ?? 0))
-        if (supportFlags[i]) supportMinSum += minH
-        else rigidMinSum += minH
-    }
+    const rigidMinSum = profile.rigidMinSum
+    const supportMinSum = profile.supportMinSum
 
     const targetNonLoop = Math.max(Math.ceil(rigidMinSum + supportMinSum), Math.max(0, Math.ceil(nonLoopTotalTarget)))
 
@@ -473,21 +580,111 @@ export function stabilizeBranches(params: Readonly<{
     const finalBase = computeBodyForAnalyses({ y, forcedBodyH: Math.max(0, Math.ceil(forcedBodyH)), analyses, baseNeeds })
 
     if (!finalBase.hasAnyLoop) {
-        const equalized = equalizeBranchWidths(baseNeeds, minTotalW)
-        return {
-            widths: equalized,
-            analyses,
-            decision: { ...finalBase, bodyH: Math.max(finalBase.bodyH, forcedBodyH) },
-        }
+        return finalizeEqualizedBranchResult({
+            branches,
+            style,
+            depth,
+            widths: baseNeeds,
+            minTotalW,
+            y,
+            forcedBodyH,
+            baseNeeds,
+            layoutNode,
+            fallbackBodyH: Math.max(finalBase.bodyH, forcedBodyH),
+        })
     }
 
     const solved = computeLoopWidthsAndBodyH({ baseNeeds, analyses, decision: finalBase, minTotalW, forcedBodyH })
 
-    return {
+    return finalizeEqualizedBranchResult({
+        branches,
+        style,
+        depth,
         widths: solved.widths,
+        minTotalW,
+        y,
+        forcedBodyH,
+        baseNeeds,
+        layoutNode,
+        fallbackBodyH: solved.bodyH,
+    })
+}
+
+function buildResolvedBranchResult(params: Readonly<{
+    widths: number[]
+    analyses: BranchAnalysis[]
+    forcedBodyH: number
+    computedBodyH: number
+}>): StabilizeResult {
+    const { widths, analyses, forcedBodyH, computedBodyH } = params
+    return {
+        widths,
         analyses,
-        decision: { ...finalBase, bodyH: solved.bodyH },
+        decision: {
+            bodyH: Math.max(Math.ceil(forcedBodyH), Math.ceil(computedBodyH)),
+            nonLoopCore: 0,
+            hasAnyLoop: analyses.some((a) => a.loopCount > 0),
+            anyNonLoop: analyses.some((a) => a.nonLoopCount > 0 || a.supportCount > 0),
+            anyMixed: analyses.some((a) => a.loopCount > 0 && (a.nonLoopCount > 0 || a.supportCount > 0)),
+            isCompetition: false,
+        },
     }
+}
+
+function canEqualizeBranchWidths(params: Readonly<{
+    widths: number[]
+    analyses: BranchAnalysis[]
+    baseNeeds: number[]
+    bodyH: number
+}>): boolean {
+    const { widths, analyses, baseNeeds, bodyH } = params
+    const body = Math.max(0, Math.ceil(bodyH))
+    const structuralWidths = computeStructuralWidths(baseNeeds, analyses, body)
+
+    for (let i = 0; i < widths.length; i += 1) {
+        if (Math.ceil(structuralWidths[i] ?? 0) > Math.ceil(widths[i] ?? 0)) return false
+    }
+
+    return Math.ceil(minBodyHForBranchWidths(widths, analyses)) <= body
+}
+
+function finalizeEqualizedBranchResult(params: Readonly<{
+    branches: SequenceNode[]
+    style: StyleConfig
+    depth: number
+    widths: number[]
+    minTotalW: number
+    y: number
+    forcedBodyH: number
+    baseNeeds: number[]
+    layoutNode: LayoutNodeFn
+    fallbackBodyH: number
+}>): StabilizeResult {
+    const { branches, style, depth, widths, minTotalW, y, forcedBodyH, baseNeeds, layoutNode, fallbackBodyH } = params
+
+    const fallbackAnalyses = collectAnalyses(branches, style, depth, widths, layoutNode)
+    const fallback = buildResolvedBranchResult({
+        widths,
+        analyses: fallbackAnalyses,
+        forcedBodyH,
+        computedBodyH: fallbackBodyH,
+    })
+
+    const equalizedWidths = equalizeBranchWidths(widths, minTotalW)
+    const analyses = collectAnalyses(branches, style, depth, equalizedWidths, layoutNode)
+
+    // Equal-width is accepted only if it stays solvable under the already solved body budget.
+    const bodyBudget = Math.max(Math.ceil(forcedBodyH), Math.ceil(fallbackBodyH), Math.ceil(y))
+    if (!canEqualizeBranchWidths({ widths: equalizedWidths, analyses, baseNeeds, bodyH: bodyBudget })) {
+        return fallback
+    }
+
+    return buildResolvedBranchResult({
+        widths: equalizedWidths,
+        analyses,
+        forcedBodyH,
+        computedBodyH: bodyBudget,
+    })
 }
 
 /**

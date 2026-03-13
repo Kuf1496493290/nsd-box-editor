@@ -28,9 +28,9 @@ import {
     buildDragIndex,
     clampScale,
     clientToSvgPoint,
-    type DragIndex,
     type Point,
 } from './canvas/dragHelpers'
+import { perfLogDuration, perfNow, perfSpan } from '../utils/perf'
 
 const NOOP = () => {}
 
@@ -131,9 +131,16 @@ export function CanvasView(props: CanvasViewProps) {
         onMoveByDrag,
     } = props
 
+    const renderStart = perfNow()
     const diagramScale = clampScale(state.scale)
-    const rootBox = useMemo(() => layoutRoot(state.root, state.style), [state.root, state.style])
-    const dragIndex = useMemo<DragIndex>(() => buildDragIndex(rootBox), [rootBox])
+    const rootBox = useMemo(
+        () => perfSpan('canvas.layoutRoot.memo', () => layoutRoot(state.root, state.style)),
+        [state.root, state.style],
+    )
+    const dragIndex = useMemo(
+        () => perfSpan('canvas.dragIndex.memo', () => buildDragIndex(rootBox)),
+        [rootBox],
+    )
 
     const baseLeftPad = 20
     const menuTopSafe = 90
@@ -152,6 +159,14 @@ export function CanvasView(props: CanvasViewProps) {
 
     const [pending, setPending] = useState<PendingDrag | null>(null)
     const [dragging, setDragging] = useState<ActiveDrag | null>(null)
+
+    useEffect(() => {
+        perfLogDuration('canvas.commit', renderStart, {
+            dragging: dragging !== null,
+            pending: pending !== null,
+            selected: state.selectedNodeId,
+        })
+    })
 
     useEffect(() => {
         onDragStateChange?.(pending !== null || dragging !== null)

@@ -1,6 +1,23 @@
 import type { CaseNode, LoopNode, NsdNode, SequenceNode, StyleConfig } from '../app/types'
 import { measureTextWidth } from './measure'
 
+let activeRequiredWidthCache: Map<string, number> | null = null
+
+function requiredWidthCacheKey(node: NsdNode, depth: number): string {
+    return `${node.id}|${depth}`
+}
+
+export function withRequiredWidthCache<T>(run: () => T): T {
+    const prev = activeRequiredWidthCache
+    activeRequiredWidthCache = new Map<string, number>()
+
+    try {
+        return run()
+    } finally {
+        activeRequiredWidthCache = prev
+    }
+}
+
 export function lineBoxHeight(fontSize: number): number {
     return Math.ceil(fontSize * 1.2)
 }
@@ -114,73 +131,96 @@ export function requiredLoopSide(node: LoopNode, style: StyleConfig, depth: numb
     return Math.max(baseMin, sideNeed)
 }
 
+function readRequiredWidthCache(node: NsdNode, depth: number): number | null {
+    const cache = activeRequiredWidthCache
+    if (!cache) return null
+
+    const cacheKey = requiredWidthCacheKey(node, depth)
+    const cached = cache.get(cacheKey)
+    return cached === undefined ? null : cached
+}
+
+function writeRequiredWidthCache(node: NsdNode, depth: number, width: number): void {
+    const cache = activeRequiredWidthCache
+    if (!cache) return
+
+    const cacheKey = requiredWidthCacheKey(node, depth)
+    cache.set(cacheKey, width)
+}
+
+function requiredWidthForProcess(node: Extract<NsdNode, { type: 'process' }>, style: StyleConfig, softMin: number): number {
+    const processPad = processPadX(style)
+    const textW = measureTextWidthSafe(node.text || '', style)
+    return Math.max(softMin, Math.ceil(textW + processPad * 2))
+}
+
+function requiredWidthForSequence(node: SequenceNode, style: StyleConfig, depth: number, softMin: number): number {
+    if (node.children.length <= 0) return softMin
+
+    const childReq = node.children.map((c) => requiredWidth(c, style, depth))
+    if (depth > 0 && isLoopOnlyTopLevelSequence(node)) return Math.max(...childReq)
+    return Math.max(softMin, ...childReq)
+}
+
+function requiredWidthForIf(node: Extract<NsdNode, { type: 'if' }>, style: StyleConfig, depth: number, softMin: number): number {
+    const headerPad = safePad(style.paddingHeader)
+    const labelPad = safePad(style.paddingBranchLabel)
+
+    const conditionW = Math.ceil(measureTextWidthSafe(node.conditionText || '', style) + headerPad * 2)
+
+    const trueLabel = node.boolLabelMode === 'YN' ? 'Y' : 'T'
+    const falseLabel = node.boolLabelMode === 'YN' ? 'N' : 'F'
+    const trueLabelNeed = Math.ceil(measureTextWidthSafe(trueLabel, style) + labelPad * 2)
+    const falseLabelNeed = Math.ceil(measureTextWidthSafe(falseLabel, style) + labelPad * 2)
+
+    const trueNeed = requiredWidth(node.trueBranch, style, depth + 1)
+    const falseNeed = requiredWidth(node.falseBranch, style, depth + 1)
+
+    const leftNeed = Math.max(softMinWidth(style), trueLabelNeed, trueNeed)
+    const rightNeed = Math.max(softMinWidth(style), falseLabelNeed, falseNeed)
+
+    return Math.max(softMin, conditionW, Math.ceil(leftNeed + rightNeed))
+}
+
+function requiredWidthForCase(node: Extract<NsdNode, { type: 'case' }>, style: StyleConfig, depth: number, softMin: number): number {
+    const labels = getCaseLabels(node)
+    const headerPad = safePad(style.paddingHeader)
+    const labelPad = safePad(style.paddingBranchLabel)
+    const conditionW = Math.ceil(measureTextWidthSafe(node.conditionText || '', style) + headerPad * 2)
+
+    const branchNeeds = node.branches.map((b) => requiredWidth(b, style, depth + 1))
+    const colNeeds = node.branches.map((_, i) => {
+        const label = labels[i] ?? String(i + 1)
+        const labelNeed = Math.ceil(measureTextWidthSafe(label, style) + labelPad * 2)
+        const branchNeed = branchNeeds[i] ?? 0
+        return Math.max(softMinWidth(style), labelNeed, branchNeed)
+    })
+
+    return Math.max(softMin, conditionW, Math.ceil(sumNumbers(colNeeds)))
+}
+
+function computeRequiredWidth(node: NsdNode, style: StyleConfig, depth: number): number {
+    const softMin = softMinWidth(style)
+
+    if (node.type === 'process') return requiredWidthForProcess(node, style, softMin)
+    if (node.type === 'sequence') return requiredWidthForSequence(node, style, depth, softMin)
+    if (node.type === 'if') return requiredWidthForIf(node, style, depth, softMin)
+    if (node.type === 'case') return requiredWidthForCase(node, style, depth, softMin)
+    if (node.type === 'loop') return requiredLoopSide(node, style, depth)
+
+    return softMin
+}
+
 /**
  * 递归计算任意节点所需最小宽度，是布局阶段的核心输入。
  */
 export function requiredWidth(node: NsdNode, style: StyleConfig, depth: number): number {
-    const headerPad = safePad(style.paddingHeader)
-    const labelPad = safePad(style.paddingBranchLabel)
-    const processPad = processPadX(style)
+    const cached = readRequiredWidthCache(node, depth)
+    if (cached !== null) return cached
 
-    const softMin = softMinWidth(style)
-
-    if (node.type === 'process') {
-        const textW = measureTextWidthSafe(node.text || '', style)
-        return Math.max(softMin, Math.ceil(textW + processPad * 2))
-    }
-
-    if (node.type === 'sequence') {
-        if (node.children.length === 0) {
-            return softMin
-        }
-
-        const childReq = node.children.map((c) => requiredWidth(c, style, depth))
-
-        if (depth > 0 && isLoopOnlyTopLevelSequence(node)) {
-            return Math.max(...childReq)
-        }
-
-        return Math.max(softMin, ...childReq)
-    }
-
-    if (node.type === 'if') {
-        const conditionW = Math.ceil(measureTextWidthSafe(node.conditionText || '', style) + headerPad * 2)
-
-        const trueLabel = node.boolLabelMode === 'YN' ? 'Y' : 'T'
-        const falseLabel = node.boolLabelMode === 'YN' ? 'N' : 'F'
-        const trueLabelNeed = Math.ceil(measureTextWidthSafe(trueLabel, style) + labelPad * 2)
-        const falseLabelNeed = Math.ceil(measureTextWidthSafe(falseLabel, style) + labelPad * 2)
-
-        const trueNeed = requiredWidth(node.trueBranch, style, depth + 1)
-        const falseNeed = requiredWidth(node.falseBranch, style, depth + 1)
-
-        const leftNeed = Math.max(softMinWidth(style), trueLabelNeed, trueNeed)
-        const rightNeed = Math.max(softMinWidth(style), falseLabelNeed, falseNeed)
-
-        return Math.max(softMin, conditionW, Math.ceil(leftNeed + rightNeed))
-    }
-
-    if (node.type === 'case') {
-        const labels = getCaseLabels(node)
-        const conditionW = Math.ceil(measureTextWidthSafe(node.conditionText || '', style) + headerPad * 2)
-
-        const branchNeeds = node.branches.map((b) => requiredWidth(b, style, depth + 1))
-        const colNeeds = node.branches.map((_, i) => {
-            const label = labels[i] ?? String(i + 1)
-            const labelNeed = Math.ceil(measureTextWidthSafe(label, style) + labelPad * 2)
-            const branchNeed = branchNeeds[i] ?? 0
-            return Math.max(softMinWidth(style), labelNeed, branchNeed)
-        })
-
-        const sumCols = Math.ceil(sumNumbers(colNeeds))
-        return Math.max(softMin, conditionW, sumCols)
-    }
-
-    if (node.type === 'loop') {
-        return requiredLoopSide(node, style, depth)
-    }
-
-    return softMin
+    const result = computeRequiredWidth(node, style, depth)
+    writeRequiredWidthCache(node, depth, result)
+    return result
 }
 
 export function containsLoopDeep(node: NsdNode): boolean {
