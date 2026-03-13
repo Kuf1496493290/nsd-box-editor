@@ -1,8 +1,6 @@
 # NSD Box Editor
 
-## 中文说明
-
-### Windows 一键启动（无 CMD 常驻）
+### Windows 一键启动
 
 已提供 Electron 打包方案，运行后是桌面窗口，不需要浏览器，也不需要保持 `cmd` 窗口。
 
@@ -127,9 +125,7 @@ src/
 
 ---
 
-## English
-
-### Windows Click-to-Run Desktop Build (No persistent CMD)
+### Windows Click-to-Run Desktop Build
 
 This project now supports Electron packaging. The output is a desktop app window (no browser tab and no long-running terminal window).
 
