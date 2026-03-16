@@ -31,3 +31,7 @@ build/
 
 # Electron release artifacts
 release/
+
+# Local electron-builder overrides (keep locally, do not upload)
+electron-builder.modern.json
+electron-builder.win7.json

@@ -11,9 +11,12 @@ npm install
 npm run desktop:build
 ```
 
-产物目录：`release\win-unpacked\`
+产物目录：`release\modern\win-unpacked\`、`release\win7\win-unpacked\`
 
-最终给用户分发这个文件夹即可，用户双击：`release\win-unpacked\NSD Box Editor.exe`
+最终给用户分发对应系统的文件夹即可，用户双击：
+
+- `release\modern\win-unpacked\NSD Box Editor.exe`（Win10/11）
+- `release\win7\win-unpacked\NSD Box Editor.exe`（Win7）
 
 - 启动时直接打开应用窗口（不是网页标签页）
 - 关闭窗口后，进程自动退出
@@ -24,7 +27,14 @@ npm run desktop:build
 npm run desktop:portable
 ```
 
-产物示例：`release\NSD Box Editor-0.0.0-portable.exe`
+产物示例：`release\modern\NSD Box Editor v0.0.1.exe`
+
+如需单独构建 Win7 包（x64）：
+
+```powershell
+npm run desktop:build:win7
+```
+
 
 ### 项目简介
 
@@ -136,9 +146,9 @@ npm install
 npm run desktop:build
 ```
 
-Output: `release\win-unpacked\`
+Output: `release\modern\win-unpacked\` and `release\win7\win-unpacked\`
 
-Distribute this folder and let users launch `NSD Box Editor.exe` directly.
+Distribute the matching folder and let users launch `NSD Box Editor.exe` directly.
 
 - App opens as a desktop window
 - Closing the window exits the process automatically
@@ -149,7 +159,14 @@ Distribute this folder and let users launch `NSD Box Editor.exe` directly.
 npm run desktop:portable
 ```
 
-Example output: `release\NSD Box Editor-0.0.0-portable.exe`
+Example output: `release\modern\NSD Box Editor v0.0.1.exe`
+
+Build Win7 package only (x64):
+
+```powershell
+npm run desktop:build:win7
+```
+
 
 ### Overview
 
