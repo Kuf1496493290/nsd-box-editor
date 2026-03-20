@@ -66,8 +66,9 @@ function withSelection(
     selectedNodeId?: string | null,
     selectedTarget?: SelectionTarget | null,
 ): AppState {
-    const nextSelectedNodeId = selectedNodeId ?? prev.selectedNodeId
-    const resolvedTarget = selectedTarget ?? defaultTargetForNode(root, nextSelectedNodeId ?? null)
+    const nextSelectedNodeId = selectedNodeId === undefined ? prev.selectedNodeId : selectedNodeId
+    const resolvedTarget =
+        selectedTarget === undefined ? defaultTargetForNode(root, nextSelectedNodeId ?? null) : selectedTarget
 
     return normalizeSelection({
         ...prev,
