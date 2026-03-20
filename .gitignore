@@ -8,7 +8,7 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
+/dist/
 dist-ssr
 *.local
 
@@ -33,5 +33,5 @@ build/
 release/
 
 # Local electron-builder overrides (keep locally, do not upload)
-electron-builder.modern.json
-electron-builder.win7.json
+/electron-builder.modern.json
+/electron-builder.win7.json
