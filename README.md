@@ -4,12 +4,6 @@
 
 ---
 
-## Abstract
-
-Nassi–Shneiderman Diagrams (NSD) are a standard tool in computer science education for describing structured program logic, yet no dedicated free desktop editor exists — general-purpose diagramming tools lack native NSD semantics, online alternatives are paywalled or incomplete, and code-based solutions require steep learning curves. NSD Box Editor is a fully offline, zero-dependency desktop application built with React 19, TypeScript 5, and Electron 37, delivering a purpose-built NSD editing experience: an immutable-tree model that makes undo/redo completely side-effect-free, a semantic selection system that resolves insertion context with precision, self-bottom-up layout computation that prevents content overflow, and dual Windows builds targeting both Win10/11 and Win7. The project is free and open-source.
-
----
-
 ## 目录
 
 1. [项目背景](#项目背景)
@@ -374,4 +368,4 @@ npm run desktop:build:win7
 
 ## License
 
-本项目当前保留所有权利（All Rights Reserved），正式开源许可证待比赛结束后确定。
+本项目当前保留所有权利（All Rights Reserved），正式开源许可证暂未声明。
