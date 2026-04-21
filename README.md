@@ -363,9 +363,3 @@ npm run desktop:build:win7
 ```
 
 构建完成后会自动验证 Win7 产物的 PE 文件头，确认架构为 x64、文件大小合理，防止打包异常。
-
----
-
-## License
-
-本项目当前保留所有权利（All Rights Reserved），正式开源许可证暂未声明。
