@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Read(//mnt/f/Users/M/IdeaProjects/**)",
+      "Bash(node -e ' *)",
+      "Bash(node *)"
+    ]
+  }
+}

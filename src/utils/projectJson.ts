@@ -185,9 +185,6 @@ function normalizeStyle(raw: unknown): StyleConfig {
     const paddingBranchLabel = r.paddingBranchLabel
     if (typeof paddingBranchLabel === 'number') next.paddingBranchLabel = clampInt(paddingBranchLabel, 0, 80)
 
-    const loopSidebarWidth = r.loopSidebarWidth
-    if (typeof loopSidebarWidth === 'number') next.loopSidebarWidth = clampInt(loopSidebarWidth, 0, 2000)
-
     const minBlockWidth = r.minBlockWidth
     if (typeof minBlockWidth === 'number') next.minBlockWidth = clampInt(minBlockWidth, 48, 4000)
 

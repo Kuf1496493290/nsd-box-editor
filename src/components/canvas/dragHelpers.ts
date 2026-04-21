@@ -52,15 +52,6 @@ export const OWNER_HIT_MARGIN_X = 6
 export const OWNER_HIT_MARGIN_Y = 24
 export const EDGE_MARGIN_X = 24
 
-/**
- * 约束画布缩放值到可交互区间，并保留一位小数。
- */
-export function clampScale(value: number): number {
-    const v = Number.isFinite(value) ? value : 1
-    const clamped = Math.max(0.5, Math.min(2, v))
-    return Math.round(clamped * 10) / 10
-}
-
 export function ownerKeyOfContainer(container: DragContainerKey): string {
     return container.kind === 'root' ? 'root' : container.nodeId
 }

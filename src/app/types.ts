@@ -50,7 +50,6 @@ export interface StyleConfig {
     paddingProcessX: number
     paddingHeader: number
     paddingBranchLabel: number
-    loopSidebarWidth: number
     minBlockWidth: number
 }
 

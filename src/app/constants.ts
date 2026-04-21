@@ -3,8 +3,6 @@ import { createProcessNode } from '../model/factory'
 
 // 默认样式使用的基础最小块宽。
 export const BASE_BLOCK_WIDTH = 240
-// 默认样式使用的基础最小块高。
-export const BASE_BLOCK_HEIGHT = 36
 
 export const DEFAULT_STYLE: StyleConfig = {
     fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", Arial, sans-serif',
@@ -20,8 +18,6 @@ export const DEFAULT_STYLE: StyleConfig = {
     paddingHeader: 7,
     // 分支标签默认内边距。
     paddingBranchLabel: 7,
-    // LOOP 侧臂默认宽度（与基础块高一致）。
-    loopSidebarWidth: Number(BASE_BLOCK_HEIGHT),
     // 全局最小块宽。
     minBlockWidth: BASE_BLOCK_WIDTH,
 }

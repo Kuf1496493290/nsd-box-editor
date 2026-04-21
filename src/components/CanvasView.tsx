@@ -24,9 +24,9 @@ import {
     type ActiveDrag,
     type PendingDrag,
 } from './canvas/canvasInteractionHelpers'
+import { clampScale } from '../app/stateCommon'
 import {
     buildDragIndex,
-    clampScale,
     clientToSvgPoint,
     type Point,
 } from './canvas/dragHelpers'
@@ -159,6 +159,10 @@ export function CanvasView(props: CanvasViewProps) {
 
     const [pending, setPending] = useState<PendingDrag | null>(null)
     const [dragging, setDragging] = useState<ActiveDrag | null>(null)
+    const pendingRef = useRef<PendingDrag | null>(null)
+    const draggingRef = useRef<ActiveDrag | null>(null)
+    pendingRef.current = pending
+    draggingRef.current = dragging
 
     useEffect(() => {
         perfLogDuration('canvas.commit', renderStart, {
@@ -324,8 +328,8 @@ export function CanvasView(props: CanvasViewProps) {
         })
 
         pointerHandlersRef.current = createDragPointerHandlers({
-            pending,
-            dragging,
+            getPending: () => pendingRef.current,
+            getDragging: () => draggingRef.current,
             setPending,
             setDragging,
             svgRef,
@@ -354,8 +358,6 @@ export function CanvasView(props: CanvasViewProps) {
         onLoopSelect,
         onMoveByDrag,
         onProcessSelect,
-        pending,
-        dragging,
         restoreHiddenIfAny,
         restoreHiddenIfColumnIfAny,
         restoreHiddenCaseColumnIfAny,
@@ -381,7 +383,7 @@ export function CanvasView(props: CanvasViewProps) {
         pointerHandlersRef.current?.handlePointerCancelCapture(event)
     }, [])
 
-    function handleClickCapture(event: ReactPointerEvent<SVGSVGElement>) {
+    const handleClickCapture = useCallback((event: ReactPointerEvent<SVGSVGElement>) => {
         if (!suppressNextClickRef.current) return
 
         suppressNextClickRef.current = false
@@ -392,7 +394,7 @@ export function CanvasView(props: CanvasViewProps) {
 
         event.stopPropagation()
         event.preventDefault()
-    }
+    }, [])
 
     const hoverOverlay = useMemo<HoverOverlay | null>(
         () =>

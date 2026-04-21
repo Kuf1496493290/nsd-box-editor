@@ -65,7 +65,7 @@ export function FloatingTextEditor(props: FloatingTextEditorProps) {
 
                 <input
                     ref={inputRef}
-                    key={`${visible ? 'open' : 'closed'}-${value}`}
+                    key={value}
                     className="floatingEditor__input"
                     type="text"
                     defaultValue={value}

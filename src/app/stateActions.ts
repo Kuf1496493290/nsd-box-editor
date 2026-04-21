@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react'
 import type { AppState, BoolLabelMode, DragMoveRequest, SelectionTarget } from './types'
-import { commitHistory, defaultTargetForNode, normalizeSelection, type HistoryState } from './stateCommon'
+import { commitHistory, defaultTargetForNode, type HistoryState } from './stateCommon'
 import {
     insertCaseBranchInRoot,
     appendCaseAtEnd,
@@ -70,12 +70,12 @@ function withSelection(
     const resolvedTarget =
         selectedTarget === undefined ? defaultTargetForNode(root, nextSelectedNodeId ?? null) : selectedTarget
 
-    return normalizeSelection({
+    return {
         ...prev,
         root,
         selectedNodeId: nextSelectedNodeId ?? null,
         selectedTarget: resolvedTarget ?? null,
-    })
+    }
 }
 
 type SetHistory = Dispatch<SetStateAction<HistoryState>>

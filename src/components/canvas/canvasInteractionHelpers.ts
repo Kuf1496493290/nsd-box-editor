@@ -364,8 +364,8 @@ export function createDragLifecycle(params: Readonly<{
  * 创建 SVG 指针事件处理器：把 pending/dragging 状态机收敛为统一捕获流程。
  */
 export function createDragPointerHandlers(params: Readonly<{
-    pending: PendingDrag | null
-    dragging: ActiveDrag | null
+    getPending: () => PendingDrag | null
+    getDragging: () => ActiveDrag | null
     setPending: Dispatch<SetStateAction<PendingDrag | null>>
     setDragging: Dispatch<SetStateAction<ActiveDrag | null>>
     svgRef: RefObject<SVGSVGElement | null>
@@ -384,8 +384,8 @@ export function createDragPointerHandlers(params: Readonly<{
     restoreHiddenCaseColumnIfAny: () => void
 }>): PointerHandlers {
     const {
-        pending,
-        dragging,
+        getPending,
+        getDragging,
         setPending,
         setDragging,
         svgRef,
@@ -483,7 +483,7 @@ export function createDragPointerHandlers(params: Readonly<{
 
     function handlePointerDownCapture(event: ReactPointerEvent<SVGSVGElement>) {
         if (event.button !== 0) return
-        if (dragging) return
+        if (getDragging()) return
 
         const target = event.target as Element | null
         if (!target) return
@@ -499,6 +499,7 @@ export function createDragPointerHandlers(params: Readonly<{
         const p = getContentPoint(event)
         if (!p) return
 
+        const pending = getPending()
         if (pending) {
             if (pending.pointerId !== event.pointerId) return
 
@@ -532,7 +533,7 @@ export function createDragPointerHandlers(params: Readonly<{
             return
         }
 
-        if (!dragging) return
+        if (!getDragging()) return
 
         event.preventDefault()
         const dragMoveStart = perfNow()
@@ -541,11 +542,13 @@ export function createDragPointerHandlers(params: Readonly<{
     }
 
     function handlePointerUpCapture(event: ReactPointerEvent<SVGSVGElement>) {
+        const pending = getPending()
         if (pending?.pointerId === event.pointerId) {
             setPending(null)
             return
         }
 
+        const dragging = getDragging()
         if (!dragging) return
 
         const p = getContentPoint(event)
@@ -553,28 +556,28 @@ export function createDragPointerHandlers(params: Readonly<{
         restoreHiddenIfColumnIfAny()
         restoreHiddenCaseColumnIfAny()
 
-        const current = dragging
         setDragging(null)
 
         if (!p) return
 
-        if (current.kind === 'node') {
-            finishNodeDrag(current, p)
+        if (dragging.kind === 'node') {
+            finishNodeDrag(dragging, p)
             return
         }
 
-        if (current.kind === 'ifResult') {
-            finishIfResultDrag(current, p)
+        if (dragging.kind === 'ifResult') {
+            finishIfResultDrag(dragging, p)
             return
         }
 
-        finishCaseResultDrag(current, p)
+        finishCaseResultDrag(dragging, p)
     }
 
     function handlePointerCancelCapture(event: ReactPointerEvent<SVGSVGElement>) {
+        const pending = getPending()
         if (pending?.pointerId === event.pointerId) setPending(null)
 
-        if (dragging) {
+        if (getDragging()) {
             restoreHiddenIfAny()
             restoreHiddenIfColumnIfAny()
             restoreHiddenCaseColumnIfAny()
