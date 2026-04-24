@@ -6,6 +6,7 @@ import {
     distributeSlots,
     isLoopOnlyTopLevelSequence,
     requiredWidth,
+    softMinHeight,
     softMinWidth,
     sumNumbers,
     withRequiredWidthCache,
@@ -337,6 +338,35 @@ function computeEqualSlotTotalHeight(naturalBoxes: LayoutBox[], forcedTotalH: nu
     return Math.max(Math.max(0, Math.ceil(forcedTotalH)), equalNeed)
 }
 
+/**
+ * 对不含 loop 的强制序列，按各子节点自然最小高度分配槽位，多余空间优先给 process 节点。
+ */
+function computeNonLoopForcedSlots(
+    node: SequenceNode,
+    style: StyleConfig,
+    naturalBoxes: LayoutBox[],
+    totalH: number,
+): number[] {
+    const minH = softMinHeight(style)
+    const mins = naturalBoxes.map((b) => Math.max(minH, Math.ceil(b.height)))
+    const minSum = sumNumbers(mins)
+    const extra = Math.max(0, totalH - minSum)
+    const slots = mins.slice()
+    if (extra <= 0) return slots
+
+    const supportIndices: number[] = []
+    for (let i = 0; i < node.children.length; i += 1) {
+        if (node.children[i]?.type === 'process') supportIndices.push(i)
+    }
+
+    const targets = supportIndices.length > 0 ? supportIndices : node.children.map((_, i) => i)
+    const extraSlots = distributeSlots(extra, targets.length)
+    for (let i = 0; i < targets.length; i += 1) {
+        slots[targets[i]] = Math.max(0, (slots[targets[i]] ?? 0) + (extraSlots[i] ?? 0))
+    }
+    return slots
+}
+
 function layoutSequenceNaturalResolved(node: SequenceNode, width: number, naturalBoxes: LayoutBox[]): LayoutBox {
     const w = Math.max(0, Math.ceil(width))
     const h = stackChildrenAtTop(naturalBoxes)
@@ -368,6 +398,17 @@ function layoutSequenceForcedResolved(
         return { id: node.id, node, x: 0, y: 0, width: w, height: Math.max(0, Math.ceil(plan.totalH)), children }
     }
 
+    const hasAnyLoop = node.children.some((c) => c.type === 'loop')
+    if (!hasAnyLoop) {
+        // Non-loop children: respect natural minimum heights and distribute extra to support nodes
+        const minSum = sumNumbers(naturalBoxes.map((b) => Math.max(softMinHeight(style), Math.ceil(b.height))))
+        const totalH = Math.max(forcedH, Math.ceil(minSum))
+        const slots = computeNonLoopForcedSlots(node, style, naturalBoxes, totalH)
+        const children = buildCustomSlotSequenceBoxes(node, style, depth, w, slots)
+        return { id: node.id, node, x: 0, y: 0, width: w, height: Math.max(0, Math.ceil(totalH)), children }
+    }
+
+    // All-loop sequences: equalize all slots to the tallest
     const totalH = computeEqualSlotTotalHeight(naturalBoxes, forcedH)
     const children = buildForcedSequenceBoxes(node, style, depth, w, totalH)
     return { id: node.id, node, x: 0, y: 0, width: w, height: Math.max(0, Math.ceil(totalH)), children }

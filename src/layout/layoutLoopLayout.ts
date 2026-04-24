@@ -20,7 +20,8 @@ function probeLoopBodyMinHeight(
     if (node.body.children.length <= 0) return 0
 
     const w = Math.max(0, Math.ceil(holeW))
-    const probe = layoutSequence(node.body, style, depth + 1, w, 0)
+    // Use natural layout (no forced height) to avoid equal-slot inflation
+    const probe = layoutSequence(node.body, style, depth + 1, w)
     return Math.max(0, Math.ceil(probe.height))
 }
 

@@ -64,6 +64,10 @@ export function softMinWidth(style: StyleConfig): number {
     return Math.max(48, Math.ceil(x / 4))
 }
 
+export function softMinHeight(style: StyleConfig): number {
+    return baseBlockHeight(style)
+}
+
 export function isLoopOnlyTopLevelSequence(node: SequenceNode): boolean {
     if (node.children.length <= 0) return false
     return node.children.every((c) => c.type === 'loop')

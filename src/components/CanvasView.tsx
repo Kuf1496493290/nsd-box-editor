@@ -161,8 +161,10 @@ export function CanvasView(props: CanvasViewProps) {
     const [dragging, setDragging] = useState<ActiveDrag | null>(null)
     const pendingRef = useRef<PendingDrag | null>(null)
     const draggingRef = useRef<ActiveDrag | null>(null)
-    pendingRef.current = pending
-    draggingRef.current = dragging
+    useEffect(() => {
+        pendingRef.current = pending
+        draggingRef.current = dragging
+    })
 
     useEffect(() => {
         perfLogDuration('canvas.commit', renderStart, {

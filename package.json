@@ -49,6 +49,7 @@
     "appId": "com.nsd.box.editor",
     "productName": "nsd-box-editor",
     "asar": true,
+    "asarUnpack": ["dist/**/*"],
     "directories": {
       "output": "release"
     },
