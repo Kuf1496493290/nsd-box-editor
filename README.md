@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-# NSD-Box-Editor
-=======
 # nsd-box-editor
->>>>>>> 57c4b66 (chore: normalize project name to nsd-box-editor)
 
 > 一款面向结构化程序设计的 Nassi–Shneiderman 图（盒图）专用可视化编辑器
 
@@ -40,11 +36,7 @@ Nassi–Shneiderman 图（又称 N-S 图、盒图、结构图）是计算机科�
 
 ## 核心亮点
 
-<<<<<<< HEAD
-| 维度 | NSD-Box-Editor | Visio / draw.io | 在线专用工具 | struktex (LaTeX) |
-=======
 | 维度 | nsd-box-editor | Visio / draw.io | 在线专用工具 | struktex (LaTeX) |
->>>>>>> 57c4b66 (chore: normalize project name to nsd-box-editor)
 |------|---------------|-----------------|--------------|------------------|
 | N-S 图原生支持 | ✅ 全部五种结构 | ❌ 需手工拼凑 | ⚠️ 通常残缺 | ✅ 但无可视化 |
 | 免费 | ✅ 完全免费 | ❌ 付费 | ⚠️ 多为订阅制 | ✅ |
@@ -354,11 +346,7 @@ npm run desktop:build
 | `release/modern/win-unpacked/` | Windows 10 / 11（x64） |
 | `release/win7/win-unpacked/` | Windows 7（x64） |
 
-<<<<<<< HEAD
-分发时将对应的 `win-unpacked` 文件夹交给用户，双击其中的 `NSD-Box-Editor.exe` 即可启动，关闭窗口后进程自动退出。
-=======
 分发时将对应的 `win-unpacked` 文件夹交给用户，双击其中的 `nsd-box-editor.exe` 即可启动，关闭窗口后进程自动退出。
->>>>>>> 57c4b66 (chore: normalize project name to nsd-box-editor)
 
 ### 可选：单文件便携版
 
@@ -366,11 +354,7 @@ npm run desktop:build
 npm run desktop:portable
 ```
 
-<<<<<<< HEAD
-产物示例：`release/modern/NSD-Box-Editor v0.0.1.exe`，单文件即可运行，便于 U 盘携带。
-=======
-产物示例：`release/modern/nsd-box-editor v0.0.1.exe`，单文件即可运行，便于 U 盘携带。
->>>>>>> 57c4b66 (chore: normalize project name to nsd-box-editor)
+产物示例：`release/modern/nsd-box-editor_modern.exe` 与 `release/win7/nsd-box-editor_win7.exe`，单文件即可运行，便于 U 盘携带。
 
 ### 仅构建 Win7 包
 
