@@ -136,6 +136,12 @@ export function clampScale(value: number): number {
     return Math.round(clamped * 10) / 10
 }
 
+export function clampRelax(value: number): number {
+    const v = Number.isFinite(value) ? value : 1
+    const clamped = Math.max(0, Math.min(1, v))
+    return Math.round(clamped * 10) / 10
+}
+
 /**
  * 判断当前选中目标是否允许执行删除操作。
  */

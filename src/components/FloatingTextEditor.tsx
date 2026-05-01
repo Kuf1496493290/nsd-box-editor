@@ -13,9 +13,14 @@ export function FloatingTextEditor(props: FloatingTextEditorProps) {
     const { visible, value, title = '编辑文本', onConfirm, onCancel } = props
 
     const inputRef = useRef<HTMLInputElement>(null)
+    const dialogRef = useRef<HTMLDialogElement>(null)
 
     useEffect(() => {
-        if (!visible) return
+        if (!visible) {
+            // 显式关闭，避免某些浏览器在 React 卸载 <dialog> 时残留 modal/backdrop。
+            dialogRef.current?.close?.()
+            return
+        }
 
         const timer = globalThis.setTimeout(() => {
             inputRef.current?.focus()
@@ -30,18 +35,23 @@ export function FloatingTextEditor(props: FloatingTextEditorProps) {
     function handleConfirm() {
         const next = inputRef.current?.value ?? ''
         const text = next.trim()
+        // 先把焦点移出，防止 input 上残留的 keydown 影响后续渲染节奏。
+        inputRef.current?.blur()
         onConfirm(text.length > 0 ? text : ' ')
     }
 
     function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
         if (event.key === 'Enter') {
             event.preventDefault()
+            event.stopPropagation()
             handleConfirm()
             return
         }
 
         if (event.key === 'Escape') {
             event.preventDefault()
+            event.stopPropagation()
+            inputRef.current?.blur()
             onCancel()
         }
     }
@@ -55,6 +65,7 @@ export function FloatingTextEditor(props: FloatingTextEditorProps) {
 
     return (
         <dialog
+            ref={dialogRef}
             open
             className="floatingEditor"
             aria-label={title}

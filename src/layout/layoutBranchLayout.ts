@@ -5,17 +5,66 @@ import {
     containsLoopDeep,
     getCaseLabels,
     measureTextWidthSafe,
+    relaxedRequiredWidth,
     requiredWidth,
     safePad,
     softMinWidth,
 } from './layoutCommon'
 import {
+    analyzeBranchesAtWidths,
     computeNonLoopTargets,
     layoutBranchSequence,
+    minBodyHeightForBranchWidths,
     resolveCaseHeights,
     stabilizeBranches,
     type LayoutNodeFn,
 } from './layoutBranchHelpers'
+
+function sumWidths(widths: ReadonlyArray<number>): number {
+    return widths.reduce((sum, w) => sum + Math.max(0, Math.ceil(w)), 0)
+}
+
+function displayBranchWidths(params: Readonly<{
+    naturalWidths: number[]
+    stabilizedWidths: number[]
+    minTotalW: number
+    widthRelax: number
+}>): number[] {
+    const natural = params.naturalWidths.map((w) => Math.max(0, Math.ceil(w)))
+    const stable = params.stabilizedWidths.map((w, i) => Math.max(natural[i] ?? 0, Math.ceil(w)))
+    const tW = Math.max(0, Math.min(1, params.widthRelax))
+    const minTotal = Math.max(0, Math.ceil(params.minTotalW))
+
+    if (tW >= 1) {
+        const perWidth = Math.max(
+            0,
+            ...natural,
+            Math.ceil(Math.max(minTotal, sumWidths(stable)) / Math.max(1, stable.length)),
+        )
+        return stable.map(() => perWidth)
+    }
+
+    const out = stable.map((stableW, i) => {
+        const naturalW = natural[i] ?? 0
+        return Math.max(naturalW, Math.ceil(naturalW + (stableW - naturalW) * tW))
+    })
+
+    const deficit = minTotal - sumWidths(out)
+    if (deficit <= 0 || out.length <= 0) return out
+
+    const maxNatural = Math.max(...natural)
+    const targets = natural.map((w, i) => (w === maxNatural ? i : -1)).filter((i) => i >= 0)
+    const targetCount = Math.max(1, targets.length)
+    const baseAdd = Math.floor(deficit / targetCount)
+    let rem = deficit - baseAdd * targetCount
+
+    for (const idx of targets) {
+        out[idx] = Math.max(0, (out[idx] ?? 0) + baseAdd + (rem > 0 ? 1 : 0))
+        if (rem > 0) rem -= 1
+    }
+
+    return out
+}
 
 /**
  * 计算 IF 节点布局，统一收敛左右分支宽度并分配头部/主体高度。
@@ -41,15 +90,21 @@ export function layoutIfNode(params: Readonly<{
 
     const initLeftW = Math.max(softMinWidth(style), requiredWidth(node.trueBranch, style, branchDepth))
     const initRightW = Math.max(softMinWidth(style), requiredWidth(node.falseBranch, style, branchDepth))
+    const relaxedLeftW = Math.max(softMinWidth(style), relaxedRequiredWidth(node.trueBranch, style, branchDepth))
+    const relaxedRightW = Math.max(softMinWidth(style), relaxedRequiredWidth(node.falseBranch, style, branchDepth))
 
-    const minTotalW = Math.max(conditionW, Math.ceil(forcedWidth ?? 0))
+    const forcedTotalW = forcedWidth === undefined ? undefined : Math.max(0, Math.ceil(forcedWidth))
+    const structuralMinTotalW = Math.max(conditionW, forcedTotalW ?? 0)
+    const relaxedMinTotalW = Math.max(conditionW, Math.ceil(relaxedLeftW + relaxedRightW))
+    const tW = Math.max(0, Math.min(1, style.widthRelax))
+    const minTotalW = forcedTotalW ?? Math.ceil(relaxedMinTotalW + (structuralMinTotalW - relaxedMinTotalW) * tW)
 
     const stabilized = stabilizeBranches({
         branches,
         style,
         depth: branchDepth,
         initWidths: [initLeftW, initRightW],
-        minTotalW,
+        minTotalW: structuralMinTotalW,
         y,
         forcedBodyH: 0,
         passes: 6,
@@ -57,11 +112,23 @@ export function layoutIfNode(params: Readonly<{
         layoutNode,
     })
 
-    const [leftW, rightW] = stabilized.widths
+    const displayWidths = displayBranchWidths({
+        naturalWidths: [relaxedLeftW, relaxedRightW],
+        stabilizedWidths: stabilized.widths,
+        minTotalW,
+        widthRelax: style.widthRelax,
+    })
+    const [leftW, rightW] = displayWidths
     const width = Math.ceil(leftW + rightW)
+    const displayAnalyses = analyzeBranchesAtWidths(branches, style, branchDepth, displayWidths, layoutNode)
+    const bodyMinH = Math.max(
+        0,
+        Math.ceil(stabilized.decision.bodyH),
+        minBodyHeightForBranchWidths(displayWidths, displayAnalyses),
+    )
 
     let headerH = headerMin
-    let bodyH = Math.max(0, Math.ceil(stabilized.decision.bodyH))
+    let bodyH = bodyMinH
 
     if (forcedHeight !== undefined) {
         const forcedTotal = Math.max(0, Math.ceil(forcedHeight))
@@ -69,7 +136,7 @@ export function layoutIfNode(params: Readonly<{
 
         if (forcedTotal > naturalTotal) {
             const extra = forcedTotal - naturalTotal
-            const allLoopBranchesHaveNonLoop = stabilized.analyses.every(
+            const allLoopBranchesHaveNonLoop = displayAnalyses.every(
                 (a) => a.loopCount <= 0 || a.nonLoopCount > 0 || a.supportCount > 0,
             )
 
@@ -78,15 +145,15 @@ export function layoutIfNode(params: Readonly<{
                 bodyH = Math.ceil(bodyH + extra)
             } else {
                 headerH = Math.ceil(headerMin + extra)
-                bodyH = Math.max(0, Math.ceil(stabilized.decision.bodyH))
+                bodyH = bodyMinH
             }
         }
     }
 
     const nonLoopTargets = computeNonLoopTargets({
         bodyH,
-        widths: stabilized.widths,
-        analyses: stabilized.analyses,
+        widths: displayWidths,
+        analyses: displayAnalyses,
     })
 
     const trueBox = layoutBranchSequence(node.trueBranch, style, branchDepth, leftW, bodyH, nonLoopTargets[0] ?? 0, layoutNode)
@@ -142,15 +209,22 @@ export function layoutCaseNode(params: Readonly<{
     const initWidths = branches.map((b, i) =>
         Math.max(softMinWidth(style), requiredWidth(b, style, branchDepth), labelNeeds[i] ?? 0),
     )
+    const relaxedWidths = branches.map((b, i) =>
+        Math.max(softMinWidth(style), relaxedRequiredWidth(b, style, branchDepth), labelNeeds[i] ?? 0),
+    )
 
-    const minTotalW = Math.max(conditionW, Math.ceil(forcedWidth ?? 0))
+    const forcedTotalW = forcedWidth === undefined ? undefined : Math.max(0, Math.ceil(forcedWidth))
+    const structuralMinTotalW = Math.max(conditionW, forcedTotalW ?? 0)
+    const relaxedMinTotalW = Math.max(conditionW, Math.ceil(sumWidths(relaxedWidths)))
+    const tW = Math.max(0, Math.min(1, style.widthRelax))
+    const minTotalW = forcedTotalW ?? Math.ceil(relaxedMinTotalW + (structuralMinTotalW - relaxedMinTotalW) * tW)
 
     const stabilized = stabilizeBranches({
         branches,
         style,
         depth: branchDepth,
         initWidths,
-        minTotalW,
+        minTotalW: structuralMinTotalW,
         y,
         forcedBodyH: 0,
         passes: 6,
@@ -159,11 +233,19 @@ export function layoutCaseNode(params: Readonly<{
         layoutNode,
     })
 
-    const bodyMinH = Math.max(0, Math.ceil(stabilized.decision.bodyH))
+    const stabilizedBodyMinH = Math.max(0, Math.ceil(stabilized.decision.bodyH))
+    const displayWidths = displayBranchWidths({
+        naturalWidths: relaxedWidths,
+        stabilizedWidths: stabilized.widths,
+        minTotalW,
+        widthRelax: style.widthRelax,
+    })
+    const displayAnalyses = analyzeBranchesAtWidths(branches, style, branchDepth, displayWidths, layoutNode)
+    const bodyMinH = Math.max(stabilizedBodyMinH, minBodyHeightForBranchWidths(displayWidths, displayAnalyses))
 
     let headerH = headerMin
     let labelH = labelMin
-    let bodyH = bodyMinH
+    let bodyH = Math.max(bodyMinH, minBodyHeightForBranchWidths(displayWidths, displayAnalyses))
 
     if (forcedHeight !== undefined) {
         const forcedTotal = Math.max(0, Math.ceil(forcedHeight))
@@ -171,7 +253,7 @@ export function layoutCaseNode(params: Readonly<{
 
         if (forcedTotal > naturalTotal) {
             const extra = forcedTotal - naturalTotal
-            const allLoopBranchesHaveNonLoop = stabilized.analyses.every(
+            const allLoopBranchesHaveNonLoop = displayAnalyses.every(
                 (a) => a.loopCount <= 0 || a.nonLoopCount > 0 || a.supportCount > 0,
             )
 
@@ -209,15 +291,15 @@ export function layoutCaseNode(params: Readonly<{
 
     const nonLoopTargets = computeNonLoopTargets({
         bodyH,
-        widths: stabilized.widths,
-        analyses: stabilized.analyses,
+        widths: displayWidths,
+        analyses: displayAnalyses,
     })
 
     const branchBoxes: LayoutBox[] = []
     let x = 0
 
     for (let i = 0; i < branches.length; i += 1) {
-        const w = Math.max(0, Math.ceil(stabilized.widths[i] ?? 0))
+        const w = Math.max(0, Math.ceil(displayWidths[i] ?? 0))
         const box = layoutBranchSequence(branches[i], style, branchDepth, w, bodyH, nonLoopTargets[i] ?? 0, layoutNode)
         box.x = x
         box.y = headerH + labelH

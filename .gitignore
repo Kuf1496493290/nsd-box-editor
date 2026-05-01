@@ -26,8 +26,11 @@ dist-ssr
 # Electron runtime/input folder (keep locally, do not upload)
 electron/
 
-# Build helper assets/scripts (keep locally, do not upload)
-build/
+# Build helper outputs stay local; icon source/assets are required for packaging.
+build/*
+!build/icon.png
+!build/icon.ico
+!build/generate-icon.ps1
 
 # Electron release artifacts
 release/

@@ -44,15 +44,14 @@ export function Toolbar(props: ToolbarProps) {
             <button className="button" onClick={props.onInsertCase}>
                 添加 CASE
             </button>
+            <button className="button" onClick={props.onAddCaseBranch} disabled={!props.canAddCaseBranch}>
+                增加分支
+            </button>
             <button className="button" onClick={props.onInsertWhile}>
                 添加 WHILE
             </button>
             <button className="button" onClick={props.onInsertDoWhile}>
                 添加 DO-WHILE
-            </button>
-
-            <button className="button" onClick={props.onAddCaseBranch} disabled={!props.canAddCaseBranch}>
-                增加分支
             </button>
 
             <button className="button" onClick={props.onDeleteSelected} disabled={!props.canDeleteSelected}>

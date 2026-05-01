@@ -58,9 +58,10 @@ export function useImportNotice() {
 }
 
 /**
- * 维护画布与容器尺寸，并在尺寸变化时保持视口居中。
+ * 维护画布与容器尺寸；提供显式的视角回正与「定位到指定节点」入口，
+ * 不再在尺寸变化时自动居中——避免新增/删除/编辑触发布局后视角被强制拉回。
  */
-export function useCanvasViewport() {
+export function useCanvasViewport(svgRef?: RefObject<SVGSVGElement | null>) {
     const canvasWrapRef = useRef<HTMLDivElement>(null)
 
     const [canvasSize, setCanvasSize] = useState<Readonly<{ width: number; height: number }>>(INITIAL_VIEWPORT_SIZE)
@@ -95,31 +96,74 @@ export function useCanvasViewport() {
     const viewportWidth = Math.max(wrapSize.width, canvasSize.width)
     const viewportHeight = Math.max(wrapSize.height, canvasSize.height)
 
-    useEffect(() => {
+    const recenterViewport = useCallback(() => {
         const el = canvasWrapRef.current
         if (!el) return
-        if (wrapSize.width <= 0 || wrapSize.height <= 0) return
 
-        const id = requestAnimationFrame(() => {
+        const tryCenter = () => {
             const cw = Math.max(0, Math.floor(el.clientWidth))
             const ch = Math.max(0, Math.floor(el.clientHeight))
-            if (cw <= 0 || ch <= 0) return
+            if (cw <= 0 || ch <= 0) return false
 
-            const vw = Math.max(cw, viewportWidth)
-            const vh = Math.max(ch, viewportHeight)
-
+            const vw = Math.max(cw, el.scrollWidth)
+            const vh = Math.max(ch, el.scrollHeight)
             el.scrollLeft = Math.max(0, Math.floor((vw - cw) / 2))
             el.scrollTop = Math.max(0, Math.floor((vh - ch) / 2))
-        })
+            return true
+        }
 
-        return () => cancelAnimationFrame(id)
-    }, [viewportHeight, viewportWidth, wrapSize.height, wrapSize.width])
+        // 立即尝试一次；若布局尚未就绪，再等一帧重试。
+        if (!tryCenter()) {
+            requestAnimationFrame(() => {
+                tryCenter()
+            })
+        }
+    }, [])
+
+    const centerViewportOnNode = useCallback((nodeId: string | null) => {
+        if (!nodeId) return
+        const wrap = canvasWrapRef.current
+        const svg = svgRef?.current
+        if (!wrap || !svg) return
+
+        const run = () => {
+            const el = svg.querySelector<SVGGElement>(`[data-drag-node-id="${nodeId}"]`)
+            if (!el) return false
+
+            const rect = el.getBoundingClientRect()
+            const wrapRect = wrap.getBoundingClientRect()
+            const cx = rect.left + rect.width / 2 - wrapRect.left + wrap.scrollLeft
+            const cy = rect.top + rect.height / 2 - wrapRect.top + wrap.scrollTop
+
+            wrap.scrollLeft = Math.max(0, Math.floor(cx - wrap.clientWidth / 2))
+            wrap.scrollTop = Math.max(0, Math.floor(cy - wrap.clientHeight / 2))
+            return true
+        }
+
+        if (!run()) {
+            requestAnimationFrame(() => {
+                run()
+            })
+        }
+    }, [svgRef])
+
+    // 首次画布尺寸就绪时，做一次默认居中（之后再不自动回正）。
+    const hasInitialCenteredRef = useRef(false)
+    useEffect(() => {
+        if (hasInitialCenteredRef.current) return
+        if (wrapSize.width <= 0 || wrapSize.height <= 0) return
+        if (canvasSize.width <= 1 || canvasSize.height <= 1) return
+        hasInitialCenteredRef.current = true
+        recenterViewport()
+    }, [canvasSize.height, canvasSize.width, recenterViewport, wrapSize.height, wrapSize.width])
 
     return {
         canvasWrapRef,
         viewportWidth,
         viewportHeight,
         onCanvasSizeChange,
+        recenterViewport,
+        centerViewportOnNode,
     }
 }
 

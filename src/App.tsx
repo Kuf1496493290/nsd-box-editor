@@ -14,7 +14,7 @@ const HINT_LINES = [
     '8. 快捷键：Undo=Ctrl+Z，Redo=Ctrl+Shift+Z / Ctrl+Y，Delete=删除当前选中',
     '9. Enter：对当前可编辑目标进入编辑；Tab：当 CASE 条件框或分支标签被选中时增加分支',
     '10. 导出 PNG/SVG、导出 JSON/TXT、导入 JSON/TXT（导入后恢复 root / style / scale）',
-    '11. 左侧滑块可调盒图大小倍率 0.5 ~ 2.0；画布居中显示，并为悬浮菜单预留安全边距',
+    '11. 左侧滑块：盒图大小倍率 0.5~2.0；纵向松弛 0.0~1.0（0=高仅满足结构最小高，1=高拉到方形参照边长）；横向松弛 0.0~1.0（0=按自然列宽显示，可打破 IF/CASE 分支等宽；1=按规则等宽/方形参照显示）',
 ]
 
 export default function App() {
@@ -44,6 +44,8 @@ export default function App() {
         onImportProjectChange,
 
         onScaleChange,
+        onHeightRelaxChange,
+        onWidthRelaxChange,
         onCanvasSizeChange,
         onProcessSelect,
         onProcessDoubleClick,
@@ -128,6 +130,22 @@ export default function App() {
                     <div className="sliderRow">
                         <input type="range" min={0.5} max={2} step={0.1} value={state.scale} onChange={onScaleChange} />
                         <div className="value">{state.scale.toFixed(1)}</div>
+                    </div>
+                </div>
+
+                <div className="field" style={{ marginTop: 8 }}>
+                    <div className="label">纵向松弛</div>
+                    <div className="sliderRow">
+                        <input type="range" min={0} max={1} step={0.1} value={state.style.heightRelax} onChange={onHeightRelaxChange} />
+                        <div className="value">{state.style.heightRelax.toFixed(1)}</div>
+                    </div>
+                </div>
+
+                <div className="field" style={{ marginTop: 8 }}>
+                    <div className="label">横向松弛</div>
+                    <div className="sliderRow">
+                        <input type="range" min={0} max={1} step={0.1} value={state.style.widthRelax} onChange={onWidthRelaxChange} />
+                        <div className="value">{state.style.widthRelax.toFixed(1)}</div>
                     </div>
                 </div>
             </div>

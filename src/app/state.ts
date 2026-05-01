@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { AppState, SelectionTarget } from './types'
 import { createInitialState } from './constants'
-import { clampScale, commitHistory, defaultTargetForNode, HISTORY_LIMIT, normalizeSelection, type HistoryState } from './stateCommon'
+import { clampRelax, clampScale, commitHistory, defaultTargetForNode, HISTORY_LIMIT, normalizeSelection, type HistoryState } from './stateCommon'
 import { createTreeActions } from './stateActions'
 
 export function useAppState() {
@@ -68,6 +68,24 @@ export function useAppState() {
         })
     }
 
+    function updateHeightRelax(next: number) {
+        setHistory((prev) => {
+            const present = prev.present
+            const normalized = clampRelax(next)
+            if (present.style.heightRelax === normalized) return prev
+            return commitHistory(prev, { ...present, style: { ...present.style, heightRelax: normalized } })
+        })
+    }
+
+    function updateWidthRelax(next: number) {
+        setHistory((prev) => {
+            const present = prev.present
+            const normalized = clampRelax(next)
+            if (present.style.widthRelax === normalized) return prev
+            return commitHistory(prev, { ...present, style: { ...present.style, widthRelax: normalized } })
+        })
+    }
+
     function selectNodeWithDefaultTarget(nodeId: string | null) {
         setHistory((prev) => {
             const present = prev.present
@@ -120,6 +138,8 @@ export function useAppState() {
         reset,
         replaceState,
         updateScale,
+        updateHeightRelax,
+        updateWidthRelax,
         ...treeActions,
         selectNodeWithDefaultTarget,
         selectTarget,

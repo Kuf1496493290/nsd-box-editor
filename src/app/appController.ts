@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
-import type { DragMoveRequest } from './types'
+import type { AppState, DragMoveRequest } from './types'
 import { useAppState } from './state'
 import { canDeleteByTarget } from './stateCommon'
 import { useCanvasViewport, useImportNotice, useProjectIo, useTextEditorState } from './appControllerUi'
@@ -16,6 +16,8 @@ export function useAppController() {
         reset,
         replaceState,
         updateScale,
+        updateHeightRelax,
+        updateWidthRelax,
 
         appendProcessToRoot,
         appendIfToRoot,
@@ -82,10 +84,18 @@ export function useAppController() {
     } = useAppState()
 
     const svgRef = useRef<SVGSVGElement>(null)
-    const { canvasWrapRef, viewportWidth, viewportHeight, onCanvasSizeChange } = useCanvasViewport()
+    const { canvasWrapRef, viewportWidth, viewportHeight, onCanvasSizeChange, recenterViewport, centerViewportOnNode } = useCanvasViewport(svgRef)
     const { importNotice, showImportNotice } = useImportNotice()
 
     const [dragActive, setDragActive] = useState(false)
+
+    /*
+     * 视角策略：
+     * - 初始化 / 导入 → 等下一次 state 更新落到画布上后整体居中（'recenter'）
+     * - 撤销 / 重做  → 等下一次 state 更新后定位到被还原内容的代表节点（'centerSelected'）
+     * - 普通新增 / 删除 / 编辑 → 不做任何视角调整，保持当前 scrollLeft / scrollTop。
+     */
+    const pendingViewportRef = useRef<'recenter' | 'centerSelected' | null>(null)
 
     const selectedNode = useMemo(() => findNodeById(state.root, state.selectedNodeId), [state.root, state.selectedNodeId])
     const caseBranchAddRequest = useMemo(() => resolveCaseBranchAddRequest(state.selectedTarget), [state.selectedTarget])
@@ -106,19 +116,44 @@ export function useAppController() {
     const performUndo = useCallback(() => {
         if (!canUndo) return
         closeEditor()
+        pendingViewportRef.current = 'centerSelected'
         undo()
     }, [canUndo, closeEditor, undo])
 
     const performRedo = useCallback(() => {
         if (!canRedo) return
         closeEditor()
+        pendingViewportRef.current = 'centerSelected'
         redo()
     }, [canRedo, closeEditor, redo])
 
     const onInitialize = useCallback(() => {
         closeEditor()
+        pendingViewportRef.current = 'recenter'
         reset()
     }, [closeEditor, reset])
+
+    // 在 state 实际更新到下一次渲染后，按 pending 标记执行视角动作。
+    useEffect(() => {
+        const action = pendingViewportRef.current
+        if (!action) return
+        pendingViewportRef.current = null
+
+        if (action === 'recenter') {
+            recenterViewport()
+            return
+        }
+        centerViewportOnNode(state.selectedNodeId)
+    }, [centerViewportOnNode, recenterViewport, state])
+
+    // 导入时让 replaceState 之后自动触发一次居中。
+    const replaceStateWithRecenter = useCallback(
+        (next: AppState) => {
+            pendingViewportRef.current = 'recenter'
+            replaceState(next)
+        },
+        [replaceState],
+    )
 
     const {
         importProjectInputRef,
@@ -130,7 +165,7 @@ export function useAppController() {
         state,
         svgRef,
         closeEditor,
-        replaceState,
+        replaceState: replaceStateWithRecenter,
         showImportNotice,
     })
 
@@ -230,6 +265,20 @@ export function useAppController() {
         [updateScale],
     )
 
+    const onHeightRelaxChange = useCallback(
+        (event: ChangeEvent<HTMLInputElement>) => {
+            updateHeightRelax(Number(event.target.value))
+        },
+        [updateHeightRelax],
+    )
+
+    const onWidthRelaxChange = useCallback(
+        (event: ChangeEvent<HTMLInputElement>) => {
+            updateWidthRelax(Number(event.target.value))
+        },
+        [updateWidthRelax],
+    )
+
     return {
         state,
         svgRef,
@@ -256,6 +305,8 @@ export function useAppController() {
         onImportProjectChange,
 
         onScaleChange,
+        onHeightRelaxChange,
+        onWidthRelaxChange,
         onCanvasSizeChange,
         onProcessSelect: actions.onProcessSelect,
         onProcessDoubleClick: actions.onProcessDoubleClick,

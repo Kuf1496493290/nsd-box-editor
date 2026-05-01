@@ -5,6 +5,7 @@ import {
     baseBlockWidth,
     distributeSlots,
     isLoopOnlyTopLevelSequence,
+    relaxedRequiredWidth,
     requiredWidth,
     softMinHeight,
     softMinWidth,
@@ -13,17 +14,28 @@ import {
 } from './layoutCommon'
 import { layoutCaseNode, layoutIfNode } from './layoutBranchLayout'
 import { withBranchAnalysisCache } from './layoutBranchHelpers'
-import { layoutLoopNode } from './layoutLoopLayout'
+import { layoutLoopNode, withLoopSquareSideCache } from './layoutLoopLayout'
 import { perfLogDuration, perfNow } from '../utils/perf'
 
 const BORDER_GAP = 0
 let activeLayoutNodeCache: Map<string, LayoutBox> | null = null
 let activeNaturalSequenceCache: Map<string, LayoutBox[]> | null = null
 
-function layoutNodeCacheKey(node: NsdNode, depth: number, forcedWidth?: number, forcedHeight?: number): string {
+function displayRequiredWidth(node: NsdNode, style: StyleConfig, depth: number): number {
+    const structural = Math.max(0, Math.ceil(requiredWidth(node, style, depth)))
+    const relaxed = Math.max(0, Math.ceil(relaxedRequiredWidth(node, style, depth)))
+    const tW = Math.max(0, Math.min(1, style.widthRelax))
+    return Math.max(relaxed, Math.ceil(relaxed + (structural - relaxed) * tW))
+}
+
+function layoutStyleCacheKey(style: StyleConfig): string {
+    return `${style.widthRelax}|${style.heightRelax}`
+}
+
+function layoutNodeCacheKey(node: NsdNode, style: StyleConfig, depth: number, forcedWidth?: number, forcedHeight?: number): string {
     const widthKey = forcedWidth === undefined ? 'u' : String(Math.max(0, Math.ceil(forcedWidth)))
     const heightKey = forcedHeight === undefined ? 'u' : String(Math.max(0, Math.ceil(forcedHeight)))
-    return `${node.id}|${depth}|${widthKey}|${heightKey}`
+    return `${node.id}|${depth}|${layoutStyleCacheKey(style)}|${widthKey}|${heightKey}`
 }
 
 function cloneLayoutBox(box: LayoutBox): LayoutBox {
@@ -48,8 +60,8 @@ function withLayoutNodeCache<T>(run: () => T): T {
     }
 }
 
-function naturalSequenceCacheKey(node: SequenceNode, depth: number, width: number): string {
-    return `${node.id}|${depth}|${Math.max(0, Math.ceil(width))}`
+function naturalSequenceCacheKey(node: SequenceNode, style: StyleConfig, depth: number, width: number): string {
+    return `${node.id}|${depth}|${layoutStyleCacheKey(style)}|${Math.max(0, Math.ceil(width))}`
 }
 
 function cloneLayoutBoxes(boxes: ReadonlyArray<LayoutBox>): LayoutBox[] {
@@ -94,7 +106,7 @@ function buildNaturalSequenceBoxes(
 ): LayoutBox[] {
     const w = Math.max(0, Math.ceil(width))
     const cache = activeNaturalSequenceCache
-    const cacheKey = cache ? naturalSequenceCacheKey(node, depth, w) : null
+    const cacheKey = cache ? naturalSequenceCacheKey(node, style, depth, w) : null
 
     if (cache && cacheKey) {
         const cached = cache.get(cacheKey)
@@ -169,34 +181,25 @@ type ConvergedSequence = Readonly<{
     naturalBoxes: LayoutBox[]
 }>
 
-function isShrinkCandidateLoop(node: Extract<NsdNode, { type: 'loop' }>): boolean {
-    if (node.body.children.length < 2) return false
-    return node.body.children.every((c) => c.type === 'loop')
-}
-
-function hasTopLevelShrinkDriver(node: SequenceNode, depth: number): boolean {
-    if (depth !== 0) return false
-    return node.children.some((c) => c.type === 'loop' && isShrinkCandidateLoop(c))
-}
-
 function computeSequenceTargetWidth(node: SequenceNode, style: StyleConfig, depth: number, forcedWidth?: number): number {
     const softMin = softMinWidth(style)
     const x = baseBlockWidth(style)
+    const tW = Math.max(0, Math.min(1, style.widthRelax))
+    const rootBase = Math.ceil(softMin + (x - softMin) * tW)
 
     if (node.children.length === 0) {
-        const base = depth === 0 ? x : softMin
+        const base = depth === 0 ? rootBase : softMin
         return Math.ceil(Math.max(base, forcedWidth ?? 0))
     }
 
-    const childNeeds = node.children.map((c) => requiredWidth(c, style, depth))
+    const childNeeds = node.children.map((c) => displayRequiredWidth(c, style, depth))
 
     if (depth > 0 && isLoopOnlyTopLevelSequence(node)) {
         return Math.ceil(Math.max(Math.max(...childNeeds), forcedWidth ?? 0))
     }
 
     if (depth === 0) {
-        const hasShrinkDriver = hasTopLevelShrinkDriver(node, depth)
-        const base = hasShrinkDriver ? Math.max(softMin, ...childNeeds) : Math.max(x, ...childNeeds)
+        const base = Math.max(rootBase, ...childNeeds)
         return Math.ceil(Math.max(base, forcedWidth ?? 0))
     }
 
@@ -439,13 +442,13 @@ function layoutSequence(
 
 function layoutNode(node: NsdNode, style: StyleConfig, depth: number, forcedWidth?: number, forcedHeight?: number): LayoutBox {
     const cache = activeLayoutNodeCache
-    const cacheKey = cache ? layoutNodeCacheKey(node, depth, forcedWidth, forcedHeight) : null
+    const cacheKey = cache ? layoutNodeCacheKey(node, style, depth, forcedWidth, forcedHeight) : null
     if (cache && cacheKey) {
         const cached = cache.get(cacheKey)
         if (cached) return cloneLayoutBox(cached)
     }
 
-    const need = requiredWidth(node, style, depth)
+    const need = displayRequiredWidth(node, style, depth)
     const w = Math.max(need, forcedWidth ?? 0)
 
     let box: LayoutBox
@@ -473,7 +476,7 @@ function layoutNode(node: NsdNode, style: StyleConfig, depth: number, forcedWidt
  */
 export function layoutRoot(root: SequenceNode, style: StyleConfig): LayoutBox {
     const start = perfNow()
-    const box = withRequiredWidthCache(() => withBranchAnalysisCache(() => withLayoutNodeCache(() => layoutSequence(root, style, 0))))
+    const box = withRequiredWidthCache(() => withBranchAnalysisCache(() => withLayoutNodeCache(() => withLoopSquareSideCache(() => layoutSequence(root, style, 0)))))
     box.x = 0
     box.y = 0
     const rootMinW = Math.max(48, Math.ceil(style.minBlockWidth / 4))

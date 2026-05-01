@@ -4,7 +4,7 @@ import { DEFAULT_STYLE } from '../app/constants'
 type ProjectFile = Readonly<{
     root: unknown
     style: unknown
-    scale?: unknown
+    scale: unknown
 }>
 
 export type ProjectParseResult =
@@ -188,6 +188,12 @@ function normalizeStyle(raw: unknown): StyleConfig {
     const minBlockWidth = r.minBlockWidth
     if (typeof minBlockWidth === 'number') next.minBlockWidth = clampInt(minBlockWidth, 48, 4000)
 
+    const heightRelax = r.heightRelax
+    if (typeof heightRelax === 'number') next.heightRelax = Math.round(clampNumber(heightRelax, 0, 1) * 10) / 10
+
+    const widthRelax = r.widthRelax
+    if (typeof widthRelax === 'number') next.widthRelax = Math.round(clampNumber(widthRelax, 0, 1) * 10) / 10
+
     return next
 }
 
@@ -217,6 +223,11 @@ export function parseProjectJsonDetailed(text: string): ProjectParseResult {
 
     const root = normalizeSequence(data.root)
     if (!root) return { ok: false, message: '导入失败：root 不是合法的 sequence 结构。' }
+
+    if (!isPlainObject(data.style)) return { ok: false, message: '导入失败：style 不是合法的样式配置对象。' }
+    if (typeof data.scale !== 'number') return { ok: false, message: '导入失败：缺少合法的 scale 缩放配置。' }
+    if (typeof data.style.heightRelax !== 'number') return { ok: false, message: '导入失败：缺少合法的 heightRelax 纵向松弛配置。' }
+    if (typeof data.style.widthRelax !== 'number') return { ok: false, message: '导入失败：缺少合法的 widthRelax 横向松弛配置。' }
 
     const style = normalizeStyle(data.style)
     const scale = normalizeScale(data.scale)

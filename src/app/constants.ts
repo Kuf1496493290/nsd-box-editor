@@ -20,6 +20,10 @@ export const DEFAULT_STYLE: StyleConfig = {
     paddingBranchLabel: 7,
     // 全局最小块宽。
     minBlockWidth: BASE_BLOCK_WIDTH,
+    // 纵向松弛比（0=最紧凑，1=自然方形）。
+    heightRelax: 1,
+    // 横向松弛比（0=最紧凑，1=自然等宽）。
+    widthRelax: 1,
 }
 
 /**

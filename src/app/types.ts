@@ -51,6 +51,8 @@ export interface StyleConfig {
     paddingHeader: number
     paddingBranchLabel: number
     minBlockWidth: number
+    heightRelax: number
+    widthRelax: number
 }
 
 export type IfPartKey = 'header' | 'trueLabel' | 'falseLabel' | 'trueContainer' | 'falseContainer'

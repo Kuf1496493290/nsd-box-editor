@@ -47,8 +47,8 @@ export type CaseHeightDecision = Readonly<{ headerH: number; labelH: number; bod
 let activeBranchAnalysisCache: Map<string, BranchAnalysis> | null = null
 let activeBranchNonLoopProfileCache: Map<string, NonLoopProfile> | null = null
 
-function branchAnalysisCacheKey(branch: SequenceNode, depth: number, width: number): string {
-    return `${branch.id}|${depth}|${Math.max(0, Math.ceil(width))}`
+function branchAnalysisCacheKey(branch: SequenceNode, style: StyleConfig, depth: number, width: number): string {
+    return `${branch.id}|${depth}|${style.widthRelax}|${style.heightRelax}|${Math.max(0, Math.ceil(width))}`
 }
 
 export function withBranchAnalysisCache<T>(run: () => T): T {
@@ -142,7 +142,7 @@ function analyzeBranchTopLevel(
     layoutNode: LayoutNodeFn,
 ): BranchAnalysis {
     const cache = activeBranchAnalysisCache
-    const cacheKey = cache ? branchAnalysisCacheKey(branch, depth, width) : null
+    const cacheKey = cache ? branchAnalysisCacheKey(branch, style, depth, width) : null
     if (cache && cacheKey) {
         const cached = cache.get(cacheKey)
         if (cached) return cached
@@ -184,7 +184,7 @@ function computeNonLoopProfile(
     width: number,
     layoutNode: LayoutNodeFn,
 ): NonLoopProfile {
-    const key = branchAnalysisCacheKey(branch, depth, width)
+    const key = branchAnalysisCacheKey(branch, style, depth, width)
     const cache = activeBranchNonLoopProfileCache
     if (cache) {
         const cached = cache.get(key)
@@ -407,6 +407,16 @@ function collectAnalyses(
     return branches.map((b, i) => analyzeBranchTopLevel(b, style, depth, Math.max(0, Math.ceil(widths[i] ?? 0)), layoutNode))
 }
 
+export function analyzeBranchesAtWidths(
+    branches: SequenceNode[],
+    style: StyleConfig,
+    depth: number,
+    widths: number[],
+    layoutNode: LayoutNodeFn,
+): BranchAnalysis[] {
+    return collectAnalyses(branches, style, depth, widths, layoutNode)
+}
+
 function computeStructuralWidths(baseNeeds: number[], analyses: BranchAnalysis[], bodyH: number): number[] {
     const h = Math.max(0, Math.ceil(bodyH))
     const out: number[] = []
@@ -498,6 +508,10 @@ function minBodyHForBranchWidths(widths: number[], analyses: BranchAnalysis[]): 
     }
 
     return Math.max(0, Math.ceil(need))
+}
+
+export function minBodyHeightForBranchWidths(widths: number[], analyses: BranchAnalysis[]): number {
+    return minBodyHForBranchWidths(widths, analyses)
 }
 
 function computeLoopWidthsAndBodyH(params: Readonly<{
