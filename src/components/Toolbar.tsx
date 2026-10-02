@@ -1,3 +1,5 @@
+import type { MouseEvent, ReactNode } from 'react'
+
 type ToolbarProps = Readonly<{
     canUndo: boolean
     canRedo: boolean
@@ -23,54 +25,76 @@ type ToolbarProps = Readonly<{
     onImportProject: () => void
 }>
 
+function blurOnMouseDown(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault()
+}
+
+function ToolbarButton(props: Readonly<{
+    onClick: () => void
+    disabled?: boolean
+    children: ReactNode
+}>) {
+    return (
+        <button
+            type="button"
+            className="button"
+            disabled={props.disabled}
+            onMouseDown={blurOnMouseDown}
+            onClick={props.onClick}
+        >
+            {props.children}
+        </button>
+    )
+}
+
 export function Toolbar(props: ToolbarProps) {
     return (
         <>
             <div className="title">NSD 盒图编辑器</div>
 
-            <button className="button" onClick={props.onUndo} disabled={!props.canUndo}>
+            <ToolbarButton onClick={props.onUndo} disabled={!props.canUndo}>
                 撤销
-            </button>
-            <button className="button" onClick={props.onRedo} disabled={!props.canRedo}>
+            </ToolbarButton>
+            <ToolbarButton onClick={props.onRedo} disabled={!props.canRedo}>
                 重做
-            </button>
+            </ToolbarButton>
 
-            <button className="button" onClick={props.onInsertProcess}>
+            <ToolbarButton onClick={props.onInsertProcess}>
                 添加步骤
-            </button>
-            <button className="button" onClick={props.onInsertIf}>
+            </ToolbarButton>
+            <ToolbarButton onClick={props.onInsertIf}>
                 添加 IF
-            </button>
-            <button className="button" onClick={props.onInsertCase}>
+            </ToolbarButton>
+            <ToolbarButton onClick={props.onInsertCase}>
                 添加 CASE
-            </button>
-            <button className="button" onClick={props.onAddCaseBranch} disabled={!props.canAddCaseBranch}>
+            </ToolbarButton>
+            <ToolbarButton onClick={props.onAddCaseBranch} disabled={!props.canAddCaseBranch}>
                 增加分支
-            </button>
-            <button className="button" onClick={props.onInsertWhile}>
+            </ToolbarButton>
+            <ToolbarButton onClick={props.onInsertWhile}>
                 添加 WHILE
-            </button>
-            <button className="button" onClick={props.onInsertDoWhile}>
+            </ToolbarButton>
+            <ToolbarButton onClick={props.onInsertDoWhile}>
                 添加 DO-WHILE
-            </button>
+            </ToolbarButton>
 
-            <button className="button" onClick={props.onDeleteSelected} disabled={!props.canDeleteSelected}>
+            <ToolbarButton onClick={props.onDeleteSelected} disabled={!props.canDeleteSelected}>
                 删除选中
-            </button>
+            </ToolbarButton>
 
-            <button className="button" onClick={props.onInitialize}>
+            <ToolbarButton onClick={props.onInitialize}>
                 初始化
-            </button>
+            </ToolbarButton>
 
-            <button className="button" onClick={props.onExportImage}>
+            <ToolbarButton onClick={props.onExportImage}>
                 导出 PNG/SVG
-            </button>
-            <button className="button" onClick={props.onExportProject}>
+            </ToolbarButton>
+            <ToolbarButton onClick={props.onExportProject}>
                 导出 JSON/TXT
-            </button>
-            <button className="button" onClick={props.onImportProject}>
+            </ToolbarButton>
+            <ToolbarButton onClick={props.onImportProject}>
                 导入 JSON/TXT
-            </button>
+            </ToolbarButton>
         </>
     )
 }

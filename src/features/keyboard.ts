@@ -29,22 +29,8 @@ function isPrimaryMod(event: KeyboardEvent): boolean {
     return event.ctrlKey || event.metaKey
 }
 
-function isBodyOrHtml(el: Element | null): boolean {
-    if (!el) return true
-    return el === document.body || el === document.documentElement
-}
-
-/**
- * 焦点安全：
- * - 当焦点不在 body/html（例如 button/toolbar 等）时，不触发 Enter/Tab/Delete
- * - 若焦点在 input/textarea/select/contenteditable 上，也不触发 Enter/Tab/Delete（避免干扰文本编辑）
- */
-function shouldIgnoreActionKeysByFocus(): boolean {
-    const active = document.activeElement
-    if (!active) return false
-
-    if (isEditableElement(active)) return true
-    return !isBodyOrHtml(active)
+function isButtonElement(el: Element | null): boolean {
+    return !!el && el.tagName.toLowerCase() === 'button'
 }
 
 function isUndoKey(event: KeyboardEvent, key: string): boolean {
@@ -82,11 +68,14 @@ function handleActionKey(
     handler: () => boolean,
 ): void {
     if (event.repeat) return
-    if (shouldIgnoreActionKeysByFocus()) return
+    if (shouldIgnoreByActiveElement()) return
 
     const handled = handler()
-    if (handled) {
+    if (handled || isButtonElement(document.activeElement)) {
         event.preventDefault()
+        if (isButtonElement(document.activeElement)) {
+            (document.activeElement as HTMLElement).blur()
+        }
     }
 }
 
@@ -116,9 +105,10 @@ export function installKeyboardShortcuts(shortcuts: KeyboardShortcuts): () => vo
         }
     }
 
-    globalThis.addEventListener('keydown', handleKeyDown)
+    // 捕获阶段拦截，避免焦点仍在工具栏按钮时 Enter 先触发原生 click。
+    globalThis.addEventListener('keydown', handleKeyDown, true)
 
     return () => {
-        globalThis.removeEventListener('keydown', handleKeyDown)
+        globalThis.removeEventListener('keydown', handleKeyDown, true)
     }
 }
