@@ -83,6 +83,8 @@ const PROJECT_FILE_TYPES: readonly PickerAcceptType[] = [
     },
 ]
 
+const IMAGE_EXPORT_MARGIN = 100
+
 function getPickerApi(): PickerApi {
     return globalThis as unknown as PickerApi
 }
@@ -146,6 +148,49 @@ function detectImageKind(fileName: string | null | undefined): 'png' | 'svg' {
 
 function detectProjectKind(fileName: string | null | undefined): 'json' | 'txt' {
     return getLowerExt(fileName) === '.txt' ? 'txt' : 'json'
+}
+
+function buildCleanExportSvg(svgEl: SVGSVGElement): SVGSVGElement {
+    const clone = svgEl.cloneNode(true) as SVGSVGElement
+    const content = svgEl.querySelector<SVGGElement>('[data-export-content="1"]')
+
+    clone.querySelectorAll('[data-export-exclude="1"], [stroke-dasharray]').forEach((element) => {
+        element.remove()
+    })
+    clone.querySelectorAll('[data-export-content]').forEach((element) => {
+        element.removeAttribute('data-export-content')
+    })
+    clone.removeAttribute('class')
+    clone.removeAttribute('style')
+
+    if (!content) return clone
+
+    const box = content.getBBox()
+    const matrix = content.getCTM()
+    if (!matrix) return clone
+
+    const points = [
+        { x: box.x, y: box.y },
+        { x: box.x + box.width, y: box.y },
+        { x: box.x, y: box.y + box.height },
+        { x: box.x + box.width, y: box.y + box.height },
+    ].map(({ x, y }) => ({
+        x: matrix.a * x + matrix.c * y + matrix.e,
+        y: matrix.b * x + matrix.d * y + matrix.f,
+    }))
+
+    const minX = Math.min(...points.map((point) => point.x)) - IMAGE_EXPORT_MARGIN
+    const minY = Math.min(...points.map((point) => point.y)) - IMAGE_EXPORT_MARGIN
+    const maxX = Math.max(...points.map((point) => point.x)) + IMAGE_EXPORT_MARGIN
+    const maxY = Math.max(...points.map((point) => point.y)) + IMAGE_EXPORT_MARGIN
+    const width = Math.max(1, maxX - minX)
+    const height = Math.max(1, maxY - minY)
+
+    clone.setAttribute('width', String(Math.ceil(width)))
+    clone.setAttribute('height', String(Math.ceil(height)))
+    clone.setAttribute('viewBox', `${minX} ${minY} ${width} ${height}`)
+
+    return clone
 }
 
 async function writeBlobToHandle(handle: PickerSaveHandle, blob: Blob) {
@@ -245,7 +290,8 @@ export async function saveDiagramImage(svgEl: SVGSVGElement, exportScale = 2): P
             })
 
             const kind = detectImageKind(handle.name ?? 'nsd-box.png')
-            const blob = kind === 'svg' ? buildSvgBlob(svgEl) : await buildPngBlob(svgEl, exportScale)
+            const exportSvg = buildCleanExportSvg(svgEl)
+            const blob = kind === 'svg' ? buildSvgBlob(exportSvg) : await buildPngBlob(exportSvg, exportScale)
 
             await writeBlobToHandle(handle, blob)
 
@@ -263,7 +309,7 @@ export async function saveDiagramImage(svgEl: SVGSVGElement, exportScale = 2): P
         }
     }
 
-    const blob = await buildPngBlob(svgEl, exportScale)
+    const blob = await buildPngBlob(buildCleanExportSvg(svgEl), exportScale)
     triggerBlobDownload(blob, 'nsd-box.png')
 
     return {

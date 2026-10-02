@@ -433,38 +433,41 @@ export function CanvasView(props: CanvasViewProps) {
             <rect x={0} y={0} width={w} height={h} fill="transparent" onClick={handleCanvasBlankClickLocal} />
 
             <g transform={`scale(${diagramScale}) translate(${padX}, ${padY})`}>
-                <RenderNode
-                    box={rootBox}
-                    style={state.style}
-                    selectedNodeId={state.selectedNodeId}
-                    selectedTarget={state.selectedTarget}
-                    onProcessSelect={onProcessSelect}
-                    onProcessDoubleClick={onProcessDoubleClick}
-                    onIfHeaderSelect={onIfHeaderSelect}
-                    onIfHeaderDoubleClick={onIfHeaderDoubleClick}
-                    onIfPartSelect={onIfPartSelect}
-                    onIfLabelDoubleClick={onIfLabelDoubleClick}
-                    onCaseHeaderSelect={onCaseHeaderSelect}
-                    onCaseHeaderDoubleClick={onCaseHeaderDoubleClick}
-                    onCasePartSelect={onCasePartSelect}
-                    onCaseBranchLabelDoubleClick={onCaseBranchLabelDoubleClick}
-                    onLoopSelect={onLoopSelect}
-                    onLoopConditionDoubleClick={onLoopConditionDoubleClick}
-                    onLoopHoleSelect={onLoopHoleSelect}
-                    onInsertProcessAtSelection={onInsertProcessAtSelection}
-                    onInsertIfAtSelection={onInsertIfAtSelection}
-                    onInsertCaseAtSelection={onInsertCaseAtSelection}
-                    onInsertWhileAtSelection={onInsertWhileAtSelection}
-                    onInsertDoWhileAtSelection={onInsertDoWhileAtSelection}
-                    onDeleteSelected={onDeleteSelected}
-                    onAddCaseBranch={onAddCaseBranch}
-                />
+                <g data-export-content="1">
+                    <RenderNode
+                        box={rootBox}
+                        style={state.style}
+                        selectedNodeId={state.selectedNodeId}
+                        selectedTarget={state.selectedTarget}
+                        onProcessSelect={onProcessSelect}
+                        onProcessDoubleClick={onProcessDoubleClick}
+                        onIfHeaderSelect={onIfHeaderSelect}
+                        onIfHeaderDoubleClick={onIfHeaderDoubleClick}
+                        onIfPartSelect={onIfPartSelect}
+                        onIfLabelDoubleClick={onIfLabelDoubleClick}
+                        onCaseHeaderSelect={onCaseHeaderSelect}
+                        onCaseHeaderDoubleClick={onCaseHeaderDoubleClick}
+                        onCasePartSelect={onCasePartSelect}
+                        onCaseBranchLabelDoubleClick={onCaseBranchLabelDoubleClick}
+                        onLoopSelect={onLoopSelect}
+                        onLoopConditionDoubleClick={onLoopConditionDoubleClick}
+                        onLoopHoleSelect={onLoopHoleSelect}
+                        onInsertProcessAtSelection={onInsertProcessAtSelection}
+                        onInsertIfAtSelection={onInsertIfAtSelection}
+                        onInsertCaseAtSelection={onInsertCaseAtSelection}
+                        onInsertWhileAtSelection={onInsertWhileAtSelection}
+                        onInsertDoWhileAtSelection={onInsertDoWhileAtSelection}
+                        onDeleteSelected={onDeleteSelected}
+                        onAddCaseBranch={onAddCaseBranch}
+                    />
+                </g>
 
                 {dragging ? (
                     <g
                         transform={`translate(${dragging.pointerX - dragging.grabOffsetX}, ${dragging.pointerY - dragging.grabOffsetY})`}
                         opacity={0.55}
                         pointerEvents="none"
+                        data-export-exclude="1"
                     >
                         <RenderNode
                             box={dragging.ghostBox}
@@ -476,11 +479,19 @@ export function CanvasView(props: CanvasViewProps) {
                     </g>
                 ) : null}
 
-                {topSelectionBox ? <g pointerEvents="none">{renderSelectionOutline(true, topSelectionBox)}</g> : null}
+                {topSelectionBox ? (
+                    <g pointerEvents="none" data-export-exclude="1">
+                        {renderSelectionOutline(true, topSelectionBox)}
+                    </g>
+                ) : null}
             </g>
 
             {hoverOverlay && !pending && !dragging ? (
-                <g transform={`scale(${diagramScale}) translate(${padX}, ${padY})`} data-no-drag="1">
+                <g
+                    transform={`scale(${diagramScale}) translate(${padX}, ${padY})`}
+                    data-no-drag="1"
+                    data-export-exclude="1"
+                >
                     <InsertMenu
                         x={hoverOverlay.insertX}
                         y={hoverOverlay.insertY}

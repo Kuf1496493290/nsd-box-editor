@@ -75,18 +75,21 @@ export function useCanvasViewport(svgRef?: RefObject<SVGSVGElement | null>) {
         const el = canvasWrapRef.current
         if (!el) return
 
-        const ro = new ResizeObserver(() => {
+        // 视口占位层位于容器 padding 之内，必须按内容盒（扣除 padding）测量，
+        // 否则占位层恒大于可视区，滚动条会常驻。
+        const measure = () => {
+            const cs = globalThis.getComputedStyle(el)
+            const padX = (Number.parseFloat(cs.paddingLeft) || 0) + (Number.parseFloat(cs.paddingRight) || 0)
+            const padY = (Number.parseFloat(cs.paddingTop) || 0) + (Number.parseFloat(cs.paddingBottom) || 0)
             setWrapSize({
-                width: Math.max(0, Math.floor(el.clientWidth)),
-                height: Math.max(0, Math.floor(el.clientHeight)),
+                width: Math.max(0, Math.floor(el.clientWidth - padX)),
+                height: Math.max(0, Math.floor(el.clientHeight - padY)),
             })
-        })
+        }
 
+        const ro = new ResizeObserver(measure)
         ro.observe(el)
-        setWrapSize({
-            width: Math.max(0, Math.floor(el.clientWidth)),
-            height: Math.max(0, Math.floor(el.clientHeight)),
-        })
+        measure()
 
         return () => {
             ro.disconnect()
